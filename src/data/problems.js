@@ -318,6 +318,8 @@ def twoSum(nums, target):
     testCases: [
       { input: "[2,7,11,15]\n9", expected: "[0,1]" },
       { input: "[3,2,4]\n6",     expected: "[1,2]" },
+      { input: "[3,3]\n6",        expected: "[0,1]" },
+      { input: "[2,5,5,11]\n10",  expected: "[1,2]" },
     ],
     starterCode: {
       "Python 3":   "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        # Write your solution here\n        pass\n",
@@ -357,12 +359,52 @@ def maxProfit(prices):
     testCases: [
       { input: "[7,1,5,3,6,4]", expected: "5" },
       { input: "[7,6,4,3,1]",   expected: "0" },
+      { input: "[2,4,1]",        expected: "2" },
+      { input: "[1,2,3,4,5]",    expected: "4" },
     ],
     starterCode: {
       "Python 3":   "class Solution:\n    def maxProfit(self, prices: List[int]) -> int:\n        pass\n",
       "C++":        "class Solution {\npublic:\n    int maxProfit(vector<int>& prices) {\n        \n    }\n};\n",
       "Java":       "class Solution {\n    public int maxProfit(int[] prices) {\n        \n    }\n}\n",
       "JavaScript": "var maxProfit = function(prices) {\n    \n};\n",
+    },
+  },
+  3: {
+    statement: `Given an integer array \`nums\`, return \`true\` if any value appears **at least twice** in the array, and return \`false\` if every element is distinct.`,
+    examples: [
+      { input: "nums = [1,2,3,1]",          output: "true",  explanation: "The value 1 appears twice." },
+      { input: "nums = [1,2,3,4]",          output: "false", explanation: "All elements are distinct." },
+      { input: "nums = [1,1]",              output: "true" },
+    ],
+    constraints: ["1 ≤ nums.length ≤ 10⁵", "-10⁹ ≤ nums[i] ≤ 10⁹"],
+    hints: [
+      "Use a set to track seen values.",
+      "Return true as soon as you find a duplicate.",
+    ],
+    editorial: `## Approach: Hash Set — O(n) Time, O(n) Space
+
+Iterate through the array. If a number is already in the set, return true. Otherwise, add it.
+
+\`\`\`python
+def containsDuplicate(nums):
+    seen = set()
+    for num in nums:
+        if num in seen:
+            return True
+        seen.add(num)
+    return False
+\`\`\``,
+    testCases: [
+      { input: "[1,2,3,1]", expected: "True" },
+      { input: "[1,2,3,4]", expected: "False" },
+      { input: "[1,1]",     expected: "True" },
+      { input: "[99,99]",   expected: "True" },
+    ],
+    starterCode: {
+      "Python 3":   "class Solution:\n    def containsDuplicate(self, nums: List[int]) -> bool:\n        pass\n",
+      "C++":        "class Solution {\npublic:\n    bool containsDuplicate(vector<int>& nums) {\n        \n    }\n};\n",
+      "Java":       "class Solution {\n    public boolean containsDuplicate(int[] nums) {\n        \n    }\n}\n",
+      "JavaScript": "var containsDuplicate = function(nums) {\n    \n};\n",
     },
   },
   21: {
@@ -469,7 +511,7 @@ For roadmap practice, prioritize correctness and maintainability before polish.`
     ],
     starterCode: {
       "Python 3": isMl
-        ? `def ${fn}(data):\n    \"\"\"Implement ${problem.title}.\"\"\"\n    # Write your solution here\n    return None\n`
+        ? `def ${fn}(data):\n    """Implement ${problem.title}."""\n    # Write your solution here\n    return None\n`
         : `def ${fn}(input_data):\n    # Write your solution here\n    return input_data\n`,
       "C++": `class Solution {\npublic:\n    void ${fn}() {\n        // Write your solution here\n    }\n};\n`,
       "Java": `class Solution {\n    public void ${fn}() {\n        // Write your solution here\n    }\n}\n`,

@@ -2,8 +2,8 @@
 
 ## Admin Login Credentials
 ```
-Email:    admin@codebro.io
-Password: Admin123!@#
+Email:    value of REACT_APP_ADMIN_EMAIL
+Password: your private Firebase password
 ```
 
 ---
@@ -15,8 +15,8 @@ Password: Admin123!@#
 1. Go to: https://console.firebase.google.com
 2. Select your CodeBro project
 3. Click: Authentication → Users → Create User
-4. Email:    admin@codebro.io
-5. Password: Admin123!@#
+4. Email:    value of REACT_APP_ADMIN_EMAIL
+5. Password: your private Firebase password
 6. Click: Create
 ```
 
@@ -27,7 +27,7 @@ Password: Admin123!@#
 3. Click: SQL Editor
 4. Copy and paste:
 
-   UPDATE users SET role = 'admin' WHERE email = 'admin@codebro.io';
+   UPDATE users SET role = 'admin' WHERE email = 'admin1@codebro.dev';
 
 5. Click: Run
 ```
@@ -36,8 +36,8 @@ Password: Admin123!@#
 ```
 1. Go to: Your CodeBro app
 2. Click: Login
-3. Email:    admin@codebro.io
-4. Password: Admin123!@#
+3. Email:    value of REACT_APP_ADMIN_EMAIL
+4. Password: your private Firebase password
 5. Click: Sign In
 6. Click: Profile Icon (top-right)
 7. Verify: "⚙️ Admin Panel" option appears
@@ -127,12 +127,12 @@ To verify everything is set up correctly, run these SQL queries:
 
 ### Check if admin user exists:
 ```sql
-SELECT * FROM users WHERE email = 'admin@codebro.io';
+SELECT * FROM users WHERE email = 'admin1@codebro.dev';
 ```
 
 ### Check if admin role is set:
 ```sql
-SELECT email, role FROM users WHERE email = 'admin@codebro.io';
+SELECT email, role FROM users WHERE email = 'admin1@codebro.dev';
 ```
 
 ### Check all users and their roles:
@@ -146,8 +146,8 @@ SELECT display_name, email, role FROM users;
 
 | Field | Value |
 |-------|-------|
-| **Admin Email** | admin@codebro.io |
-| **Admin Password** | Admin123!@# |
+| **Admin Email** | value of `REACT_APP_ADMIN_EMAIL` |
+| **Admin Password** | your private Firebase password |
 | **First Login** | After Firebase + Supabase setup |
 | **Setup Time** | ~5 minutes |
 | **Required** | Firebase + Supabase access |
@@ -156,7 +156,7 @@ SELECT display_name, email, role FROM users;
 
 ## ✅ Setup Completion Checklist
 
-- [ ] Created Firebase user with admin@codebro.io
+- [ ] Created Firebase user with the value of `REACT_APP_ADMIN_EMAIL`
 - [ ] Set Supabase user role to 'admin'
 - [ ] Logged in successfully
 - [ ] Verified admin panel appears

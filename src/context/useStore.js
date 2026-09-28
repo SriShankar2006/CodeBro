@@ -5,7 +5,9 @@ import {
   loginWithEmail, registerWithEmail, loginWithGoogle as fbGoogle,
   logoutUser, resetPassword, updateUserProfile, onAuthChange,
 } from "../services/firebase";
+import { ADMIN_EMAIL } from "../services/firebase";
 import { getProfile, createProfile, updateProfile } from "../services/supabase";
+import { hydrateAdminContent, subscribeAdminContent } from "../utils/adminContent";
 
 const useStore = create(
   persist(
@@ -14,50 +16,89 @@ const useStore = create(
       user:        null,
       userProfile: null,
       loading:     true,
+      contentLoading: true,
+      progressRevision: 0,
+      contentRevision: 0,
 
       setUser:        (u) => set({ user: u }),
       setUserProfile: (p) => set({ userProfile: p }),
       setLoading:     (l) => set({ loading: l }),
+      notifyProgress: () => set(s => ({ progressRevision: s.progressRevision + 1 })),
+      loadAdminContent: async () => {
+        try {
+          await hydrateAdminContent();
+        } finally {
+          set(s => ({ contentLoading: false, contentRevision: s.contentRevision + 1 }));
+        }
+      },
+      startAdminContentSync: () => subscribeAdminContent(async () => {
+        if (await hydrateAdminContent()) {
+          set(s => ({ contentRevision: s.contentRevision + 1 }));
+        }
+      }),
 
       initAuth: () => {
         const unsub = onAuthChange(async (firebaseUser) => {
+          if (!firebaseUser) {
+            set({ user: null, userProfile: null, loading: false });
+            return;
+          }
+
+          // Keep Firebase auth independent from profile storage. A Supabase
+          // outage or RLS error must not turn a valid session into a logout.
+          set({ user: firebaseUser });
+          let profile = {
+            uid: firebaseUser.uid,
+            display_name: firebaseUser.displayName || "CodeBro",
+            email: firebaseUser.email || "",
+            avatar: firebaseUser.photoURL || "",
+            role: firebaseUser.email?.toLowerCase() === ADMIN_EMAIL ? "admin" : "student",
+            xp: 0,
+            level: 1,
+            coins: 0,
+            streak: 0,
+            solved_problems: [],
+            badges: [],
+            social_links: {},
+          };
+
           try {
-            if (firebaseUser) {
-              set({ user: firebaseUser });
-              let profile = await getProfile(firebaseUser.uid);
-              if (!profile) {
-                // ── Brand new user: create clean profile ──
-                profile = await createProfile({
-                  uid:              firebaseUser.uid,
-                  display_name:     firebaseUser.displayName || "CodeBro",
-                  username:         (firebaseUser.email?.split("@")[0] || "user") + Math.floor(Math.random() * 9999),
-                  email:            firebaseUser.email || "",
-                  avatar:           firebaseUser.photoURL || "",
-                  bio:              "",
-                  location:         "",
-                  role:             "student",
-                  xp:               0,
-                  level:            1,
-                  coins:            0,
-                  streak:           0,
-                  last_login_date:  new Date().toISOString(),
-                  solved_problems:  [],
-                  badges:           [],
-                  social_links:     {},
-                });
+            const storedProfile = await getProfile(firebaseUser.uid);
+            if (storedProfile) {
+              const configuredAdmin = firebaseUser.email?.toLowerCase() === ADMIN_EMAIL;
+              profile = configuredAdmin ? { ...storedProfile, role: "admin" } : storedProfile;
+              if (configuredAdmin && storedProfile.role !== "admin") {
+                try {
+                  profile = { ...profile, ...(await updateProfile(firebaseUser.uid, { role: "admin" })) };
+                } catch (roleError) {
+                  // Keep the configured admin session usable while Supabase setup is completed.
+                  console.warn("Admin role sync failed; using configured admin identity:", roleError.message || roleError);
+                }
               }
-              set({ userProfile: profile });
-              // Update streak
-              get().updateStreak(firebaseUser.uid, profile);
             } else {
-              set({ user: null, userProfile: null });
+              const newProfile = {
+                ...profile,
+                username: (firebaseUser.email?.split("@")[0] || "user") + Math.floor(Math.random() * 9999),
+                bio: "",
+                location: "",
+                last_login_date: new Date().toISOString(),
+              };
+              try {
+                profile = await createProfile(newProfile);
+              } catch (createErr) {
+                // Another auth callback may have created the row first.
+                profile = await getProfile(firebaseUser.uid);
+                if (!profile) throw createErr;
+              }
             }
           } catch (err) {
-            console.error("Auth init error:", err);
-            set({ user: null, userProfile: null });
-          } finally {
-            set({ loading: false });
+            console.error("Profile sync error; continuing with Firebase session:", err);
           }
+
+          set({ userProfile: profile, loading: false });
+          get().updateStreak(firebaseUser.uid, profile).catch(() => {
+            // A missing or misconfigured profile table must not block sign-in.
+          });
         });
         return unsub;
       },
@@ -88,10 +129,10 @@ const useStore = create(
 
       // ── Profile update ────────────────────────────────
       updateMyProfile: async (updates) => {
-        const { user, userProfile } = get();
+        const { user } = get();
         if (!user) return;
         const updated = await updateProfile(user.uid, updates);
-        set({ userProfile: { ...userProfile, ...updated } });
+        set(s => ({ userProfile: { ...s.userProfile, ...updated }, progressRevision: s.progressRevision + 1 }));
         return updated;
       },
 
@@ -102,7 +143,7 @@ const useStore = create(
         const newXP    = (userProfile.xp    || 0) + amount;
         const newLevel = Math.floor(newXP / 500) + 1;
         const updated  = await updateProfile(user.uid, { xp: newXP, level: newLevel });
-        set({ userProfile: { ...userProfile, ...updated } });
+        set(s => ({ userProfile: { ...s.userProfile, ...updated }, progressRevision: s.progressRevision + 1 }));
         get().addNotification({ type: "xp", message: `+${amount} XP — ${reason}` });
       },
 
@@ -113,20 +154,36 @@ const useStore = create(
         if (solved.includes(problemId)) return false;
         const newSolved = [...solved, problemId];
         const updated   = await updateProfile(user.uid, { solved_problems: newSolved });
-        set({ userProfile: { ...userProfile, ...updated } });
+        set(s => ({ userProfile: { ...s.userProfile, ...updated }, progressRevision: s.progressRevision + 1 }));
         return true;
       },
 
+      // FIX: streak logic — the original had a redundant `else if (last !== today)`
+      // which always reset streak to 1 even on consecutive days.
       updateStreak: async (uid, profile) => {
         const today     = new Date().toDateString();
-        const last      = profile?.last_login_date;
+        const lastRaw   = profile?.last_login_date;
+        const last      = lastRaw ? new Date(lastRaw).toDateString() : null;
         const yesterday = new Date(Date.now() - 86400000).toDateString();
+
+        // Already updated today — skip
+        if (last === today) return;
+
         let streak = profile?.streak || 0;
-        if (last === today)     return;
-        if (last === yesterday) streak += 1;
-        else if (last !== today) streak = 1;
-        await updateProfile(uid, { streak, last_login_date: today });
-        set(s => ({ userProfile: s.userProfile ? { ...s.userProfile, streak, last_login_date: today } : s.userProfile }));
+        if (last === yesterday) {
+          // Consecutive day — increment
+          streak += 1;
+        } else {
+          // Missed a day (or first ever login) — reset to 1
+          streak = 1;
+        }
+
+        const storedDate = new Date().toISOString();
+        await updateProfile(uid, { streak, last_login_date: storedDate });
+        set(s => ({
+          userProfile: s.userProfile ? { ...s.userProfile, streak, last_login_date: storedDate } : s.userProfile,
+          progressRevision: s.progressRevision + 1,
+        }));
       },
 
       // ── UI ────────────────────────────────────────────

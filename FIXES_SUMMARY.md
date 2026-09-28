@@ -53,8 +53,8 @@
 ### 4. ✅ Admin Credentials Provided
 **New Admin Account:**
 ```
-Email: admin@codebro.io
-Password: Admin123!@#
+Email: value of `REACT_APP_ADMIN_EMAIL`
+Password: your private Firebase password
 ```
 
 **Setup Steps:**
@@ -106,8 +106,8 @@ Password: Admin123!@#
 
 ### For Admin Users
 1. Log in with admin credentials:
-   - Email: `admin@codebro.io`
-   - Password: `Admin123!@#`
+   - Email: the value of `REACT_APP_ADMIN_EMAIL`
+   - Password: your private Firebase password
 2. Click the **Profile Icon** in the top-right navbar
 3. Select **⚙️ Admin Panel**
 4. View user details, manage problems/courses, and analytics

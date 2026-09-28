@@ -1,20 +1,18 @@
 // src/pages/Profile.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import useStore from "../context/useStore";
-import { Card, ProgressBar, ActivityHeatmap, Button, Modal, Input, SectionHeader, DifficultyTag, DonutChart, BarChart } from "../components/UI";
-import { getActivityData, getUserSubmissions } from "../services/supabase";
+import { Card, ProgressBar, ActivityHeatmap, Button, Modal, Input, SectionHeader, DifficultyTag, DonutChart, BarChart, StatCard } from "../components/UI";
+import { getActivityData } from "../services/supabase";
 import { uploadAvatar } from "../services/supabase";
-import { PROBLEMS, ALL_TOPICS } from "../data/problems";
+import { PROBLEMS } from "../data/problems";
 import { BADGES } from "../data/courses";
 
 export default function Profile() {
-  const { user, userProfile, updateMyProfile } = useStore();
+  const { user, userProfile, updateMyProfile, progressRevision } = useStore();
   const fileInputRef  = useRef();
   const [editOpen,    setEditOpen]    = useState(false);
   const [heatmap,     setHeatmap]     = useState({});
-  const [submissions, setSubmissions] = useState([]);
   const [uploading,   setUploading]   = useState(false);
   const [editForm,    setEditForm]    = useState({
     display_name: userProfile?.display_name || "",
@@ -25,15 +23,18 @@ export default function Profile() {
 
   useEffect(() => {
     if (!user?.uid) return;
+    let active = true;
     (async () => {
-      const [hm, subs] = await Promise.all([
-        getActivityData(user.uid).catch(() => ({})),
-        getUserSubmissions(user.uid).catch(() => []),
-      ]);
-      setHeatmap(hm);
-      setSubmissions(subs);
+      try {
+        const idToken = await user.getIdToken();
+        const hm = await getActivityData(idToken);
+        if (active) setHeatmap(hm);
+      } catch {
+        if (active) setHeatmap({});
+      }
     })();
-  }, [user?.uid]);
+    return () => { active = false; };
+  }, [user, progressRevision]);
 
   const name    = userProfile?.display_name || user?.displayName || "Coder";
   const xp      = userProfile?.xp     || 0;
@@ -64,7 +65,7 @@ export default function Profile() {
     if (!file || !user?.uid) return;
     setUploading(true);
     try {
-      const url = await uploadAvatar(user.uid, file);
+      const url = await uploadAvatar(await user.getIdToken(), file);
       await updateMyProfile({ avatar: url });
       toast.success("Avatar updated!");
     } catch (err) {
@@ -91,37 +92,40 @@ export default function Profile() {
         {/* ── Left ── */}
         <div>
           {/* Profile card */}
-          <Card style={{ textAlign:"center",padding:28,marginBottom:14 }}>
-            <div style={{ position:"relative",display:"inline-block",marginBottom:14 }}>
-              <div style={{ width:90,height:90,borderRadius:"50%",border:"3px solid var(--accent)",background:"linear-gradient(135deg,rgba(168,85,247,.3),rgba(99,102,241,.3))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:34,fontWeight:800,overflow:"hidden",cursor:"pointer" }}
-                onClick={() => fileInputRef.current?.click()}>
-                {userProfile?.avatar ? (
-                  <img src={userProfile.avatar} alt="avatar" style={{ width:"100%",height:"100%",objectFit:"cover" }} />
-                ) : (
-                  name.slice(0,2).toUpperCase()
-                )}
+          <Card style={{ padding:0,marginBottom:14,overflow:"hidden" }}>
+            <div style={{ height:72,background:"linear-gradient(135deg,var(--accent2),var(--purple) 55%,var(--cyan))" }} />
+            <div style={{ textAlign:"center",padding:"0 24px 24px" }}>
+              <div style={{ position:"relative",display:"inline-block",marginTop:-44,marginBottom:12 }}>
+                <div style={{ width:88,height:88,borderRadius:"50%",border:"4px solid var(--bg2)",background:"linear-gradient(135deg,rgba(168,85,247,.35),rgba(99,102,241,.35))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:800,overflow:"hidden",cursor:"pointer",boxShadow:"var(--shadow)" }}
+                  onClick={() => fileInputRef.current?.click()}>
+                  {userProfile?.avatar ? (
+                    <img src={userProfile.avatar} alt="avatar" style={{ width:"100%",height:"100%",objectFit:"cover" }} />
+                  ) : (
+                    name.slice(0,2).toUpperCase()
+                  )}
+                </div>
+                <div style={{ position:"absolute",bottom:0,right:-2,width:26,height:26,borderRadius:"50%",background:"var(--accent2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"2px solid var(--bg2)" }}
+                  onClick={() => fileInputRef.current?.click()}>
+                  {uploading ? <div className="spin-anim" style={{ width:12,height:12,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%" }} /> : "📷"}
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatarUpload} />
               </div>
-              <div style={{ position:"absolute",bottom:0,right:0,width:26,height:26,borderRadius:"50%",background:"var(--accent2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",border:"2px solid var(--bg2)" }}
-                onClick={() => fileInputRef.current?.click()}>
-                {uploading ? <div className="spin-anim" style={{ width:12,height:12,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%" }} /> : "📷"}
-              </div>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatarUpload} />
-            </div>
 
-            <h2 style={{ fontSize:18,marginBottom:2 }}>{name}</h2>
-            <div style={{ fontSize:12,color:"var(--text3)",marginBottom:5 }}>@{userProfile?.username||"coder"}</div>
-            {userProfile?.location && <div style={{ fontSize:12,color:"var(--text2)",marginBottom:4 }}>📍{userProfile.location}</div>}
-            <div style={{ fontSize:12,color:"var(--text3)",marginBottom:16,lineHeight:1.6 }}>
-              {userProfile?.bio || "No bio yet — click Edit Profile to add one."}
-            </div>
-            <div style={{ display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"4px 16px",marginBottom:16 }}>
-              <span style={{ fontSize:14 }}>⚡</span>
-              <span style={{ color:"var(--yellow)",fontWeight:700,fontSize:12 }}>Level {level}</span>
-              <span style={{ fontSize:11,color:"var(--text3)" }}>· {xp.toLocaleString()} XP</span>
-            </div>
-            <div style={{ display:"flex",justifyContent:"center",gap:8 }}>
-              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>✏️ Edit Profile</Button>
-              <Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(window.location.href); toast.success("Link copied!"); }}>🔗 Share</Button>
+              <h2 style={{ fontSize:18,marginBottom:2 }}>{name}</h2>
+              <div style={{ fontSize:12,color:"var(--text3)",marginBottom:5 }}>@{userProfile?.username||"coder"}</div>
+              {userProfile?.location && <div style={{ fontSize:12,color:"var(--text2)",marginBottom:4 }}>📍{userProfile.location}</div>}
+              <div style={{ fontSize:12,color:"var(--text3)",marginBottom:16,lineHeight:1.6 }}>
+                {userProfile?.bio || "No bio yet — click Edit Profile to add one."}
+              </div>
+              <div style={{ display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"4px 16px",marginBottom:16 }}>
+                <span style={{ fontSize:14 }}>⚡</span>
+                <span style={{ color:"var(--yellow)",fontWeight:700,fontSize:12 }}>Level {level}</span>
+                <span style={{ fontSize:11,color:"var(--text3)" }}>· {xp.toLocaleString()} XP</span>
+              </div>
+              <div style={{ display:"flex",justifyContent:"center",gap:8 }}>
+                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>✏️ Edit Profile</Button>
+                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(window.location.href); toast.success("Link copied!"); }}>🔗 Share</Button>
+              </div>
             </div>
           </Card>
 
@@ -170,17 +174,10 @@ export default function Profile() {
         <div>
           {/* Stats */}
           <div className="grid-4" style={{ marginBottom:14 }}>
-            {[
-              { label:"Solved",  value:solved,  color:"var(--green)"  },
-              { label:"XP",      value:xp.toLocaleString(), color:"var(--yellow)" },
-              { label:"Streak",  value:`🔥${streak}`, color:"var(--orange)" },
-              { label:"Badges",  value:badges.length, color:"var(--purple)" },
-            ].map(({ label,value,color }) => (
-              <div key={label} style={{ background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:"12px",textAlign:"center" }}>
-                <div style={{ fontSize:18,fontWeight:800,color }}>{value}</div>
-                <div style={{ fontSize:10,color:"var(--text3)",marginTop:2 }}>{label}</div>
-              </div>
-            ))}
+            <StatCard icon="✅" label="Solved"  value={solved} color="var(--green)" />
+            <StatCard icon="⚡" label="XP"      value={xp.toLocaleString()} color="var(--yellow)" />
+            <StatCard icon="🔥" label="Streak"  value={streak} sub={streak === 1 ? "day" : "days"} color="var(--orange)" />
+            <StatCard icon="🏅" label="Badges"  value={badges.length} sub={`of ${BADGES.length}`} color="var(--purple)" />
           </div>
 
           {/* Solve distribution */}
@@ -247,7 +244,7 @@ export default function Profile() {
                 No problems solved yet. Start solving!
               </div>
             ) : solvedList.slice(-6).reverse().map(p => (
-              <div key={p.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid rgba(42,58,92,.4)" }}>
+              <div key={p.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--border-subtle)" }}>
                 <span style={{ color:"var(--green)",fontSize:14 }}>✓</span>
                 <span style={{ flex:1,fontSize:12,fontWeight:600 }}>#{p.id} {p.title}</span>
                 <DifficultyTag difficulty={p.difficulty} />

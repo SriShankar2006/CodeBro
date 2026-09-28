@@ -2,15 +2,27 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
-import { QUIZ_QUESTIONS, QUIZ_TOPICS } from "../data/courses";
+import { getAllQuizQuestions } from "../utils/adminContent";
 import { saveQuizResult } from "../services/supabase";
 import useStore from "../context/useStore";
 import { Card, Button, ProgressBar, TabBar } from "../components/UI";
 
+const shuffle = items => {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+};
+
 export default function Quiz() {
   const { user, awardXP } = useStore();
+  useStore(state => state.contentRevision);
+  const quizQuestions = getAllQuizQuestions();
+  const quizTopics = Object.keys(quizQuestions);
   const [phase,     setPhase]     = useState("select");
-  const [topic,     setTopic]     = useState("Data Structures");
+  const [topic,     setTopic]     = useState(() => Object.keys(getAllQuizQuestions())[0] || "Data Structures");
   const [diff,      setDiff]      = useState("All");
   const [questions, setQuestions] = useState([]);
   const [current,   setCurrent]   = useState(0);
@@ -18,30 +30,24 @@ export default function Quiz() {
   const [timeLeft,  setTimeLeft]  = useState(0);
   const [showExp,   setShowExp]   = useState(false);
   const [score,     setScore]     = useState(0);
+  const [submitted, setSubmitted] = useState(false);
 
   const startQuiz = () => {
-    let qs = [...(QUIZ_QUESTIONS[topic] || [])];
+    let qs = [...(quizQuestions[topic] || [])];
     if (diff !== "All") qs = qs.filter(q => q.difficulty === diff);
     if (!qs.length) { toast.error("No questions for this filter."); return; }
-    const shuffled = qs.sort(() => Math.random() - 0.5).slice(0, Math.min(qs.length, 6));
+    const shuffled = shuffle(qs).slice(0, Math.min(qs.length, 12)).map(q => {
+      const options = q.options.map((option, index) => ({ option, correct: index === q.answer }));
+      const shuffledOptions = shuffle(options);
+      return { ...q, options: shuffledOptions.map(item => item.option), answer: shuffledOptions.findIndex(item => item.correct) };
+    });
     setQuestions(shuffled);
     setAnswers(new Array(shuffled.length).fill(-1));
     setCurrent(0);
     setTimeLeft(shuffled.length * 45);
     setShowExp(false);
+    setSubmitted(false);
     setPhase("quiz");
-  };
-
-  useEffect(() => {
-    if (phase !== "quiz") return;
-    if (timeLeft <= 0) { finishQuiz(); return; }
-    const t = setTimeout(() => setTimeLeft(v => v - 1), 1000);
-    return () => clearTimeout(t);
-  }, [timeLeft, phase]);
-
-  const selectAnswer = i => {
-    if (answers[current] !== -1) return;
-    const upd = [...answers]; upd[current] = i; setAnswers(upd); setShowExp(true);
   };
 
   const finishQuiz = useCallback(async () => {
@@ -59,7 +65,34 @@ export default function Quiz() {
         await saveQuizResult({ uid: user.uid, topic, score: correct, total: questions.length, accuracy: Math.round(correct/questions.length*100), xp_earned: xpEarned });
       } catch {}
     }
-  }, [questions, answers, topic, user]);
+  }, [questions, answers, topic, user, awardXP]);
+
+  useEffect(() => {
+    if (phase !== "quiz") return;
+    if (timeLeft <= 0) { finishQuiz(); return; }
+    const t = setTimeout(() => setTimeLeft(v => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [timeLeft, phase, finishQuiz]);
+
+  const selectAnswer = i => {
+    if (submitted) return;
+    const upd = [...answers]; upd[current] = i; setAnswers(upd);
+  };
+
+  const submitAnswer = () => {
+    if (answers[current] === -1) { toast.error("Choose an answer first."); return; }
+    setSubmitted(true);
+    setShowExp(true);
+  };
+
+  const nextQuestion = () => {
+    if (!submitted) { submitAnswer(); return; }
+    if (current < questions.length - 1) {
+      setCurrent(v => v + 1);
+      setSubmitted(answers[current + 1] !== -1);
+      setShowExp(answers[current + 1] !== -1);
+    } else finishQuiz();
+  };
 
   const accuracy = questions.length > 0 ? Math.round(score / questions.length * 100) : 0;
   const timerColor = timeLeft < 30 ? "var(--red)" : timeLeft < 60 ? "var(--yellow)" : "var(--accent3)";
@@ -74,7 +107,7 @@ export default function Quiz() {
           <Card style={{ marginBottom:14 }}>
             <h4 style={{ marginBottom:12 }}>Choose Topic</h4>
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-              {QUIZ_TOPICS.map(t => (
+              {quizTopics.map(t => (
                 <div key={t} onClick={() => setTopic(t)} style={{
                   padding:"10px 14px", borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:600,
                   border:`1px solid ${topic===t?"var(--accent)":"var(--border)"}`,
@@ -82,7 +115,7 @@ export default function Quiz() {
                   color: topic===t ? "var(--accent3)" : "var(--text)", transition:"all .15s",
                 }}>
                   {t}
-                  <span style={{ float:"right", fontSize:11, color:"var(--text3)", fontWeight:400 }}>{QUIZ_QUESTIONS[t]?.length} Qs</span>
+                  <span style={{ float:"right", fontSize:11, color:"var(--text3)", fontWeight:400 }}>{quizQuestions[t]?.length} Qs</span>
                 </div>
               ))}
             </div>
@@ -98,12 +131,12 @@ export default function Quiz() {
             {[
               ["📚 Topic",      topic],
               ["🎚 Difficulty", diff],
-              ["❓ Questions",  "Up to 6"],
-              ["⏱ Time",       "~4 minutes"],
+              ["❓ Questions",  `Up to ${Math.min((quizQuestions[topic] || []).filter(q => diff === "All" || q.difficulty === diff).length, 12)}`],
+              ["⏱ Time",       "~9 minutes"],
               ["⚡ XP per correct","20 XP"],
               ["🎓 Perfect bonus", "50 XP"],
             ].map(([k,v]) => (
-              <div key={k} style={{ display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid rgba(42,58,92,.4)",fontSize:12 }}>
+              <div key={k} style={{ display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--border-subtle)",fontSize:12 }}>
                 <span style={{ color:"var(--text2)" }}>{k}</span>
                 <span style={{ color:"var(--text)",fontWeight:600 }}>{v}</span>
               </div>
@@ -181,19 +214,20 @@ export default function Quiz() {
               {q.options.map((opt, i) => {
                 const isChosen  = chosen === i;
                 const isCorrect = i === q.answer;
-                const revealed  = chosen !== -1;
+                const revealed  = submitted;
                 let border = "var(--border)", bg = "var(--bg3)", color = "var(--text)";
-                if (revealed && isCorrect)              { border="var(--green)";  bg="rgba(16,185,129,.1)"; }
-                else if (revealed && isChosen && !isCorrect) { border="var(--red)";   bg="rgba(239,68,68,.1)"; }
+                if (revealed && isCorrect) { border="var(--green)"; bg="rgba(16,185,129,.1)"; }
+                else if (revealed && isChosen && !isCorrect) { border="var(--red)"; bg="rgba(239,68,68,.1)"; }
+                else if (isChosen) { border="var(--accent)"; bg="rgba(99,102,241,.12)"; }
                 return (
                   <div key={i} onClick={() => selectAnswer(i)} style={{
                     display:"flex",alignItems:"center",gap:12,padding:"12px 16px",
                     borderRadius:8,border:`1px solid ${border}`,background:bg,
-                    cursor:chosen===-1?"pointer":"default",transition:"all .15s",color,
+                    cursor:!submitted && chosen===-1?"pointer":"default",transition:"all .15s",color,
                   }}>
                     <div style={{ width:22,height:22,borderRadius:"50%",border:`1.5px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,
-                      background:revealed&&isCorrect?"var(--green)":revealed&&isChosen&&!isCorrect?"var(--red)":"transparent",
-                      color:revealed&&(isCorrect||(isChosen&&!isCorrect))?"#fff":"inherit",
+                      background:revealed&&isCorrect?"var(--green)":revealed&&isChosen&&!isCorrect?"var(--red)":isChosen?"var(--accent)":"transparent",
+                      color:((revealed && (isCorrect || (isChosen && !isCorrect))) || isChosen) ? "#fff" : "inherit",
                     }}>
                       {revealed&&isCorrect?"✓":revealed&&isChosen&&!isCorrect?"✗":String.fromCharCode(65+i)}
                     </div>
@@ -220,8 +254,8 @@ export default function Quiz() {
             <div key={i} onClick={() => { setCurrent(i);setShowExp(answers[i]!==-1); }} style={{ width:9,height:9,borderRadius:"50%",cursor:"pointer",background:i===current?"var(--accent)":answers[i]!==-1?"var(--green)":"var(--bg3)" }} />
           ))}
         </div>
-        <Button variant="primary" onClick={() => { if(current<questions.length-1){setCurrent(v=>v+1);setShowExp(answers[current+1]!==-1);}else finishQuiz(); }} disabled={chosen===-1&&!showExp}>
-          {current===questions.length-1?"Finish ✓":"Next →"}
+        <Button variant="primary" onClick={nextQuestion} disabled={chosen===-1}>
+          {!submitted ? "Submit Answer" : current===questions.length-1 ? "Finish ✓" : "Next Question →"}
         </Button>
       </div>
     </div>

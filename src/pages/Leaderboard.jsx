@@ -5,7 +5,11 @@ import { getLeaderboard } from "../services/supabase";
 import { Card, TabBar, ProgressBar, Avatar } from "../components/UI";
 import useStore from "../context/useStore";
 
-const COLORS = ["var(--yellow)","var(--text2)","#cd7f32","var(--accent3)","var(--green)","var(--purple)","var(--pink)","var(--cyan)","var(--orange)","var(--blue)"];
+// NOTE: plain hex values (not CSS var(...)) so the "+ '22'" alpha-suffix below
+// produces valid 8-digit hex colors. var(--xxx) + "22" is invalid CSS and was
+// silently dropping the avatar background color for most rows. "--blue" also
+// wasn't defined in globals.css.
+const COLORS = ["#f59e0b","#94a3b8","#cd7f32","#818cf8","#10b981","#a855f7","#ec4899","#22d3ee","#f97316","#3b82f6"];
 
 function RankIcon({ rank }) {
   if (rank === 1) return <span style={{ fontSize:20 }}>🥇</span>;
@@ -15,7 +19,7 @@ function RankIcon({ rank }) {
 }
 
 export default function Leaderboard() {
-  const { user, userProfile } = useStore();
+  const { user, userProfile, progressRevision } = useStore();
   const [tab,     setTab]     = useState("🌍 Global");
   const [leaders, setLeaders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +29,8 @@ export default function Leaderboard() {
       setLoading(true);
       try {
         const data = await getLeaderboard(50);
-        setLeaders(data.map((u,i) => ({ ...u, rank: i+1 })));
+        const filtered = data.filter(u => u.role !== "admin");
+        setLeaders(filtered.map((u,i) => ({ ...u, rank: i+1 })));
       } catch {
         // fallback demo data
         setLeaders([
@@ -43,10 +48,9 @@ export default function Leaderboard() {
       }
       setLoading(false);
     })();
-  }, [tab]);
+  }, [tab, progressRevision]);
 
   const myRank = leaders.findIndex(l => l.uid === user?.uid) + 1;
-  const myEntry = leaders.find(l => l.uid === user?.uid);
   const myXP   = userProfile?.xp || 0;
 
   const TOPIC_RANKS = [
@@ -101,7 +105,7 @@ export default function Leaderboard() {
             </div>
             {loading ? (
               Array.from({length:8}).map((_,i) => (
-                <div key={i} style={{ padding:"12px 16px",borderBottom:"1px solid rgba(42,58,92,.4)",display:"flex",gap:12,alignItems:"center" }}>
+                <div key={i} style={{ padding:"12px 16px",borderBottom:"1px solid var(--border-subtle)",display:"flex",gap:12,alignItems:"center" }}>
                   <div className="skeleton" style={{ width:24,height:16,borderRadius:4 }} />
                   <div className="skeleton" style={{ width:32,height:32,borderRadius:"50%" }} />
                   <div style={{ flex:1 }}><div className="skeleton" style={{ width:"60%",height:12,marginBottom:4 }} /><div className="skeleton" style={{ width:"40%",height:10 }} /></div>
@@ -110,7 +114,7 @@ export default function Leaderboard() {
               ))
             ) : leaders.map((u,i) => (
               <motion.div key={u.uid} initial={{ opacity:0,x:-8 }} animate={{ opacity:1,x:0 }} transition={{ delay:i*.03 }}
-                style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid rgba(42,58,92,.4)",background:u.uid===user?.uid?"rgba(99,102,241,.06)":"transparent" }}>
+                style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--border-subtle)",background:u.uid===user?.uid?"var(--glass-bg)":"transparent" }}>
                 <div style={{ width:28,textAlign:"center",flexShrink:0 }}><RankIcon rank={u.rank} /></div>
                 <div style={{ width:32,height:32,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,flexShrink:0,background:(COLORS[i]||"var(--accent)")+"22",color:COLORS[i]||"var(--accent)" }}>
                   {(u.display_name||"?")[0].toUpperCase()}
@@ -186,7 +190,7 @@ export default function Leaderboard() {
               { icon:"🔥",text:`${userProfile?.streak||0}-day streak`,   color:"var(--orange)"  },
               { icon:"🏅",text:`${(userProfile?.badges||[]).length} badges earned`,            color:"var(--purple)" },
             ].map(({ icon,text,color }) => (
-              <div key={text} style={{ display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid rgba(42,58,92,.4)",fontSize:12 }}>
+              <div key={text} style={{ display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid var(--border-subtle)",fontSize:12 }}>
                 <span style={{ color,fontSize:16 }}>{icon}</span>
                 <span style={{ color:"var(--text2)" }}>{text}</span>
               </div>

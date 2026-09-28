@@ -16,12 +16,14 @@ import {
 } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyCjPI22y7CrUa9lGh48wPmoXtBcHQ2FrQE",
-  authDomain:        "codebro-92f0c.firebaseapp.com",
-  projectId:         "codebro-92f0c",
-  messagingSenderId: "1097108830799",
-  appId:             "1:1097108830799:web:65caee85c883956baf083a",
+  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain:       process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             process.env.REACT_APP_FIREBASE_APP_ID,
 };
+
+export const ADMIN_EMAIL = (process.env.REACT_APP_ADMIN_EMAIL || "admin1@codebro.dev").toLowerCase();
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);

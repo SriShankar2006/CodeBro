@@ -23,6 +23,7 @@
     "zustand": "^4.4.0"
   },
   "scripts": {
+    "dev": "react-scripts start",
     "start": "react-scripts start",
     "build": "npx react-scripts build",
     "test": "react-scripts test"

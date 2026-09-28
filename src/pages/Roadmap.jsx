@@ -29,9 +29,19 @@ export function Roadmap() {
   const [roadmapType, setRoadmapType] = useState("dsa");
 
   const currentRoadmap = ROADMAPS[roadmapType];
-  const nodes = currentRoadmap.data;
-
   const solvedSet   = new Set(userProfile?.solved_problems || []);
+  const nodeMap = Object.fromEntries(currentRoadmap.data.map(node => [node.id, node]));
+
+  const nodes = currentRoadmap.data.map(node => {
+    const solved = node.problemIds.every(pid => solvedSet.has(pid));
+    const prereqsMet = node.prerequisites.every(pr => {
+      const prereqNode = nodeMap[pr];
+      return prereqNode ? prereqNode.problemIds.every(pid => solvedSet.has(pid)) : false;
+    });
+    const status = solved ? "done" : prereqsMet ? "active" : "locked";
+    return { ...node, status };
+  });
+
   const doneCount   = nodes.filter(n=>n.status==="done").length;
   const activeCount = nodes.filter(n=>n.status==="active").length;
   const pct         = Math.round(doneCount/nodes.length*100);
@@ -184,19 +194,28 @@ const VERDICT_ICONS = {
 
 export function Submissions() {
   const navigate = useNavigate();
-  const { user } = useStore();
+  const { user, progressRevision } = useStore();
   const [subs,    setSubs]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter,  setFilter]  = useState("All");
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
 
   useEffect(() => {
     if (!user?.uid) return;
+    let active = true;
     (async () => {
-      const data = await getUserSubmissions(user.uid).catch(() => []);
-      setSubs(data);
-      setLoading(false);
+      try {
+        const idToken = await user.getIdToken();
+        const data = await getUserSubmissions(idToken);
+        if (active) setSubs(data);
+      } catch {
+        if (active) setSubs([]);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
-  }, [user?.uid]);
+    return () => { active = false; };
+  }, [user, progressRevision]);
 
   const filtered = subs.filter(s => filter==="All" || s.verdict===filter);
 
@@ -233,6 +252,7 @@ export function Submissions() {
                 <th>Runtime</th>
                 <th>Memory</th>
                 <th>Time</th>
+                <th>Code</th>
               </tr>
             </thead>
             <tbody>
@@ -244,12 +264,33 @@ export function Submissions() {
                   <td style={{ color:"var(--text2)",fontSize:12 }}>{s.runtime||"—"}</td>
                   <td style={{ color:"var(--text2)",fontSize:12 }}>{s.memory||"—"}</td>
                   <td style={{ color:"var(--text3)",fontSize:11 }}>{s.created_at?new Date(s.created_at).toLocaleDateString():"—"}</td>
+                  <td>
+                    <button className="btn btn-outline btn-sm" onClick={event => { event.stopPropagation(); setSelectedSubmission(s); }}>
+                      View code
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+      {selectedSubmission && (
+        <section className="card" style={{ marginTop:16 }} aria-label="Selected submission source code">
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:10 }}>
+            <div>
+              <h3 style={{ fontSize:14 }}>#{selectedSubmission.problem_id} {selectedSubmission.problem_title}</h3>
+              <div style={{ fontSize:11,color:"var(--text3)",marginTop:4 }}>
+                {selectedSubmission.language} · {selectedSubmission.created_at ? new Date(selectedSubmission.created_at).toLocaleString() : ""}
+              </div>
+            </div>
+            <button className="btn btn-outline btn-sm" onClick={() => setSelectedSubmission(null)} aria-label="Close source code">Close</button>
+          </div>
+          <pre style={{ margin:0,padding:14,maxHeight:420,overflow:"auto",borderRadius:6,background:"var(--bg1)",color:"var(--text)",fontSize:12,lineHeight:1.55,whiteSpace:"pre",tabSize:4 }}>
+            <code>{selectedSubmission.code || "No source code was stored for this submission."}</code>
+          </pre>
+        </section>
+      )}
     </div>
   );
 }

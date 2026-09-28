@@ -1,15 +1,18 @@
 // src/pages/Problems.jsx
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import useStore from "../context/useStore";
-import { DifficultyTag, Tag, Card, TabBar, ProgressBar } from "../components/UI";
-import { PROBLEMS, ALL_TOPICS } from "../data/problems";
+import { Card, TabBar, ProgressBar } from "../components/UI";
+import { getAllProblemTopics, getAllProblems } from "../utils/adminContent";
 
 export default function Problems() {
   const navigate = useNavigate();
   const { userProfile } = useStore();
-  const solvedSet = new Set(userProfile?.solved_problems || []);
+  useStore(state => state.contentRevision);
+  const solvedSet = useMemo(
+    () => new Set(userProfile?.solved_problems || []),
+    [userProfile?.solved_problems]
+  );
 
   const [search,     setSearch]     = useState("");
   const [topic,      setTopic]      = useState("All");
@@ -17,11 +20,13 @@ export default function Problems() {
   const [sort,       setSort]       = useState("Default");
   const [tab,        setTab]        = useState("All Problems");
   const [company,    setCompany]    = useState("All");
+  const allProblems = getAllProblems();
+  const allTopics = getAllProblemTopics();
 
   const companies = ["All","Google","Amazon","Facebook","Microsoft","Apple","Bloomberg","Adobe","LinkedIn","Uber","Netflix","Frontend","Backend","Full Stack","DevOps","ML"];
 
   const filtered = useMemo(() => {
-    let list = [...PROBLEMS];
+    let list = [...allProblems];
     if (tab === "Solved")     list = list.filter(p => solvedSet.has(p.id));
     if (tab === "Unsolved")   list = list.filter(p => !solvedSet.has(p.id));
     if (tab === "Easy")       list = list.filter(p => p.difficulty === "Easy");
@@ -36,21 +41,21 @@ export default function Problems() {
     if (sort === "Difficulty") list.sort((a,b) => ["Easy","Medium","Hard"].indexOf(a.difficulty) - ["Easy","Medium","Hard"].indexOf(b.difficulty));
     if (sort === "XP ↓")      list.sort((a,b) => b.xp - a.xp);
     return list;
-  }, [search, topic, difficulty, sort, tab, company, solvedSet]);
+  }, [allProblems, search, topic, difficulty, sort, tab, company, solvedSet]);
 
-  const easySolved   = PROBLEMS.filter(p => p.difficulty==="Easy"   && solvedSet.has(p.id)).length;
-  const mediumSolved = PROBLEMS.filter(p => p.difficulty==="Medium" && solvedSet.has(p.id)).length;
-  const hardSolved   = PROBLEMS.filter(p => p.difficulty==="Hard"   && solvedSet.has(p.id)).length;
-  const easyTotal    = PROBLEMS.filter(p => p.difficulty==="Easy").length;
-  const mediumTotal  = PROBLEMS.filter(p => p.difficulty==="Medium").length;
-  const hardTotal    = PROBLEMS.filter(p => p.difficulty==="Hard").length;
+  const easySolved   = allProblems.filter(p => p.difficulty==="Easy"   && solvedSet.has(p.id)).length;
+  const mediumSolved = allProblems.filter(p => p.difficulty==="Medium" && solvedSet.has(p.id)).length;
+  const hardSolved   = allProblems.filter(p => p.difficulty==="Hard"   && solvedSet.has(p.id)).length;
+  const easyTotal    = allProblems.filter(p => p.difficulty==="Easy").length;
+  const mediumTotal  = allProblems.filter(p => p.difficulty==="Medium").length;
+  const hardTotal    = allProblems.filter(p => p.difficulty==="Hard").length;
 
   return (
     <div className="page-container fade-in">
       <div style={{ display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12 }}>
         <div>
           <h2>Problem Set</h2>
-          <p style={{ fontSize:12, marginTop:2 }}>{PROBLEMS.length} problems · {solvedSet.size} solved ({Math.round(solvedSet.size/PROBLEMS.length*100)}%)</p>
+          <p style={{ fontSize:12, marginTop:2 }}>{allProblems.length} problems · {solvedSet.size} solved ({Math.round(solvedSet.size/allProblems.length*100)}%)</p>
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <input type="text" placeholder="🔍 Search problems or #id..." value={search} onChange={e=>setSearch(e.target.value)} style={{ width:230 }} />
@@ -72,7 +77,7 @@ export default function Problems() {
           { label:"Easy",   solved:easySolved,   total:easyTotal,   color:"var(--green)",  bg:"rgba(16,185,129,.1)",  border:"rgba(16,185,129,.25)"  },
           { label:"Medium", solved:mediumSolved, total:mediumTotal, color:"var(--yellow)", bg:"rgba(245,158,11,.1)",  border:"rgba(245,158,11,.25)"  },
           { label:"Hard",   solved:hardSolved,   total:hardTotal,   color:"var(--red)",    bg:"rgba(239,68,68,.1)",   border:"rgba(239,68,68,.25)"   },
-          { label:"Total",  solved:solvedSet.size,total:PROBLEMS.length,color:"var(--accent3)",bg:"var(--bg3)", border:"var(--border)" },
+          { label:"Total",  solved:solvedSet.size,total:allProblems.length,color:"var(--accent3)",bg:"var(--bg3)", border:"var(--border)" },
         ].map(({ label,solved,total,color,bg,border }) => (
           <div key={label} style={{ flex:1,minWidth:100,background:bg,border:`1px solid ${border}`,borderRadius:10,padding:"12px 14px",textAlign:"center" }}>
             <div style={{ fontSize:20,fontWeight:800,color }}>{solved}<span style={{ fontSize:13,color:"var(--text3)",fontWeight:400 }}>/{total}</span></div>
@@ -84,7 +89,7 @@ export default function Problems() {
 
       {/* Topic pills */}
       <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:14 }}>
-        {["All",...ALL_TOPICS.slice(0,14)].map(t => (
+        {["All",...allTopics.slice(0,14)].map(t => (
           <div key={t} onClick={() => setTopic(t)} className="tag"
             style={{ cursor:"pointer",padding:"5px 12px",transition:"all .15s",
               background: topic===t ? "var(--accent2)" : "rgba(99,102,241,.1)",
@@ -100,7 +105,16 @@ export default function Problems() {
 
       {/* Table */}
       <Card style={{ padding:0, overflow:"hidden" }}>
-        <table className="data-table">
+        <table className="data-table problems-table">
+          <colgroup>
+            <col className="problems-col-number" />
+            <col className="problems-col-title" />
+            <col className="problems-col-acceptance" />
+            <col className="problems-col-difficulty" />
+            <col className="problems-col-topics" />
+            <col className="problems-col-xp" />
+            <col className="problems-col-status" />
+          </colgroup>
           <thead>
             <tr>
               <th style={{ width:50 }}>#</th>
@@ -113,10 +127,9 @@ export default function Problems() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p, i) => (
-              <motion.tr key={p.id} className="clickable"
-                initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:Math.min(i*.02,.3) }}
-                onClick={() => navigate(`/editor/${p.id}`)}>
+            {filtered.map(p => (
+              <tr key={p.id} className="clickable"
+                onClick={() => navigate(`/editor/${p.id}`, { state: { fromProblems: true } })}>
                 <td style={{ color:"var(--text3)", fontFamily:"var(--font-mono)" }}>{p.id}</td>
                 <td>
                   <div style={{ fontWeight:600 }}>{p.title}</div>
@@ -127,10 +140,10 @@ export default function Problems() {
                   </div>
                 </td>
                 <td style={{ color:"var(--text3)", fontFamily:"var(--font-mono)" }}>{p.acceptance.toFixed(1)}%</td>
-                <td><DifficultyTag difficulty={p.difficulty} /></td>
+                <td>{p.difficulty}</td>
                 <td>
                   {p.topics.slice(0,2).map(t => (
-                    <span key={t} className="tag tag-blue" style={{ marginRight:4, fontSize:10 }}>{t}</span>
+                    <span key={t} style={{ marginRight:8 }}>{t}</span>
                   ))}
                 </td>
                 <td style={{ color:"var(--yellow)", fontWeight:700, fontSize:11 }}>+{p.xp}</td>
@@ -139,7 +152,7 @@ export default function Problems() {
                     ? <span style={{ color:"var(--green)", fontSize:16 }}>✓</span>
                     : <span style={{ color:"var(--text3)", fontSize:14 }}>○</span>}
                 </td>
-              </motion.tr>
+              </tr>
             ))}
           </tbody>
         </table>

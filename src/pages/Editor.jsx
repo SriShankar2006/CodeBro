@@ -1,309 +1,639 @@
-// src/pages/Editor.jsx
-import React, { useState, useEffect } from "react";
+// src/pages/Editor.jsx — Complete, fully working with Next/Prev navigation
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import MonacoEditor from "@monaco-editor/react";
 import toast from "react-hot-toast";
-import ReactMarkdown from "react-markdown";
-import { PROBLEMS, PROBLEM_DETAILS, defaultStarter } from "../data/problems";
+import { PROBLEM_DETAILS, defaultStarter } from "../data/problems";
+import { getAllProblems } from "../utils/adminContent";
 import { runCode } from "../services/judge0";
 import { createSubmission } from "../services/supabase";
 import useStore from "../context/useStore";
-import { DifficultyTag, Tag, Button } from "../components/UI";
+import { DifficultyTag } from "../components/UI";
 
-const LANGUAGES = ["Python 3","C++","Java","JavaScript","C","Go","Rust"];
-const MONACO_LANG = { "Python 3":"python","C++":"cpp","C":"c","Java":"java","JavaScript":"javascript","Go":"go","Rust":"rust" };
-const VERDICT_COLORS = { "Accepted":"var(--green)","Wrong Answer":"var(--red)","Time Limit Exceeded":"var(--yellow)","Compilation Error":"var(--orange)","Runtime Error":"var(--red)","In Queue":"var(--text2)","Processing":"var(--text2)" };
+/* ── Constants ───────────────────────────────────────────── */
+const LANGUAGES = ["Python 3", "C++", "Java", "JavaScript", "C", "Go", "Rust"];
 
-export default function Editor() {
-  const { id: problemId } = useParams();
-  const navigate  = useNavigate();
-  const { user, userProfile, markProblemSolved, awardXP, addNotification } = useStore();
+const LANG_MONACO = {
+  "Python 3":   "python",
+  "C++":        "cpp",
+  "Java":       "java",
+  "JavaScript": "javascript",
+  "C":          "c",
+  "Go":         "go",
+  "Rust":       "rust",
+};
 
-  const problem = PROBLEMS.find(p => p.id === Number(problemId)) || PROBLEMS[0];
-  const detail  = PROBLEM_DETAILS[problem.id] || null;
+const LAST_KEY    = "codebro-last-editor-problem";
+const codeKey     = (uid, pid, lang) => `codebro-editor-code-${uid}-${pid}-${lang}`;
 
-  const [lang,    setLang]    = useState("Python 3");
-  const [code,    setCode]    = useState("");
-  const [input,   setInput]   = useState(detail?.testCases?.[0]?.input || "");
-  const [output,  setOutput]  = useState(null);
-  const [running, setRunning] = useState(false);
-  const [panel,   setPanel]   = useState("problem");
-  const [hintIdx, setHintIdx] = useState(-1);
-  const [theme,   setTheme]   = useState("vs-dark");
-  const [fontSize,setFontSize]= useState(13);
-
-  // Load saved code or starter
-  useEffect(() => {
-    const key   = `cb_code_${problem.id}_${lang}`;
-    const saved = localStorage.getItem(key);
-    setCode(saved || (detail?.starterCode?.[lang] ?? defaultStarter(lang)));
-  }, [problem.id, lang]);
-
-  const saveCode = val => {
-    setCode(val);
-    localStorage.setItem(`cb_code_${problem.id}_${lang}`, val);
-  };
-
-  const handleRun = async () => {
-    setRunning(true);
-    setOutput({ status:"running" });
+/* ── Output helpers ──────────────────────────────────────── */
+function normalize(o) {
+  return (o || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+}
+function cmpOutput(a, b) {
+  if (normalize(a) === normalize(b)) return true;
+  const compact = v => v.replace(/\s+/g, "").toLowerCase();
+  return compact(normalize(a)) === compact(normalize(b));
+}
+function parseSafe(v) {
+  const s = normalize(v);
+  if (!s) return null;
+  try { return JSON.parse(s); } catch {
     try {
-      const result = await runCode({ sourceCode: code, language: lang, stdin: input });
-      setOutput({ ...result, type:"run" });
-    } catch (e) {
-      setOutput({ verdict:"Error", stderr: e.message, type:"error" });
-    } finally {
-      setRunning(false);
-    }
+      return JSON.parse(s
+        .replace(/\bTrue\b/g,"true")
+        .replace(/\bFalse\b/g,"false")
+        .replace(/\bNone\b/g,"null"));
+    } catch { return null; }
+  }
+}
+function cmpProblem(actual, expected, pid) {
+  if (cmpOutput(actual, expected)) return true;
+  if (pid === 1) {
+    const a = parseSafe(actual), e = parseSafe(expected);
+    if (Array.isArray(a) && Array.isArray(e) && a.length === e.length)
+      return [...a].sort((x,y)=>x-y).join(",") === [...e].sort((x,y)=>x-y).join(",");
+  }
+  return false;
+}
+
+function fnName(src, lang) {
+  const m = {
+    "Python 3":   /def\s+([A-Za-z_]\w*)\s*\(/,
+    "JavaScript": /(?:function|var|let|const)\s+([A-Za-z_]\w*)\s*(?:=|\()/,
+    "Java":       /public\s+(?:static\s+)?[\w<>\][]+\s+([A-Za-z_]\w*)\s*\(/,
+    "C++":        /(?:int|bool|void|vector<[^>]+>|string)\s+([A-Za-z_]\w*)\s*\(/,
   };
+  return src.match(m[lang])?.[1] || "solve";
+}
 
-  const handleSubmit = async () => {
-    setRunning(true);
-    setOutput({ status:"running", message:"Running all test cases..." });
-    try {
-      // Run against first test case (real hidden tests via Judge0 when key set)
-      const result = await runCode({ sourceCode: code, language: lang, stdin: detail?.testCases?.[0]?.input || input });
-      const accepted = result.verdictId === 3;
+function buildSrc({ sourceCode, language, stdin }) {
+  if (!stdin?.trim()) return sourceCode;
+  const fn = fnName(sourceCode, language);
+  if (language === "Python 3") return `from typing import *\nimport ast,json,sys\n${sourceCode}\ndef __p(v):\n v=v.strip()\n if not v: return ""\n try: return ast.literal_eval(v)\n except: return v\n__a=[__p(l) for l in sys.stdin.read().splitlines() if l.strip()]\n__t=getattr(Solution(),"${fn}") if "Solution" in globals() else globals()["${fn}"]\n__r=__t(*__a)\nprint(json.dumps(__r,separators=(",",":")) if not isinstance(__r,str) else __r)\n`;
+  if (language === "JavaScript") return `${sourceCode}\nconst __i=require("fs").readFileSync(0,"utf8").split(/\\r?\\n/).filter(Boolean);\nconst __p=v=>{try{return JSON.parse(v);}catch{return v;}};\nconst __r=${fn}(...__i.map(__p));\nconsole.log(typeof __r==="string"?__r:JSON.stringify(__r));\n`;
+  return sourceCode;
+}
 
-      // Save to Supabase
-      if (user?.uid) {
-        await createSubmission({
-          uid:           user.uid,
-          problem_id:    problem.id,
-          problem_title: problem.title,
-          language:      lang,
-          code,
-          verdict:       result.verdict,
-          runtime:       result.time ? `${result.time}s` : null,
-          memory:        result.memory ? `${Math.round(result.memory/1024)}MB` : null,
-        });
-      }
-
-      if (accepted) {
-        const isNew = await markProblemSolved(problem.id);
-        if (isNew) {
-          await awardXP(problem.xp, `Solved #${problem.id} ${problem.title}`);
-          toast.success(`🎉 Accepted! +${problem.xp} XP`);
-          addNotification({ type:"xp", message:`✅ Solved "${problem.title}" — +${problem.xp} XP` });
-        } else {
-          toast.success("✅ Accepted! (already solved)");
-        }
-      } else {
-        toast.error(`❌ ${result.verdict}`);
-      }
-      setOutput({ ...result, type:"submit" });
-    } catch (e) {
-      setOutput({ verdict:"Error", stderr: e.message, type:"error" });
-      toast.error("Submission error. Check your connection.");
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const solvedSet = new Set(userProfile?.solved_problems || []);
-  const isSolved  = solvedSet.has(problem.id);
-
+/* ── Results Panel ───────────────────────────────────────── */
+function ResultsPanel({ results, onClose }) {
+  const allPassed = results.length > 0 && results.every(r => r.passed);
+  const hasError  = results.some(r => ["Error","Configuration Error","Compilation Error","Runtime Error"].includes(r.verdict));
   return (
-    <div style={{ display:"flex", height:`calc(100vh - var(--nav-height))`, overflow:"hidden" }}>
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      style={{ borderTop: "2px solid var(--border)", background: "var(--bg2)", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{
+        padding: "8px 14px", borderBottom: "1px solid var(--border)",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        background: allPassed ? "rgba(16,185,129,.08)" : hasError ? "rgba(239,68,68,.08)" : "transparent",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700 }}>
+            {allPassed ? "✅ All Passed" : "❌ Tests Failed"}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--text3)" }}>
+            ({results.filter(r => r.passed).length}/{results.length})
+          </span>
+        </div>
+        <button onClick={onClose}
+          style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 15, lineHeight: 1 }}>✕</button>
+      </div>
+      {/* Test cases */}
+      <div style={{ maxHeight: 240, overflowY: "auto", padding: "8px 12px" }}>
+        {results.map((r, i) => {
+          const err = ["Error","Configuration Error","Compilation Error","Runtime Error"].includes(r.verdict);
+          return (
+            <div key={i} style={{
+              marginBottom: 8, borderRadius: 8, overflow: "hidden",
+              border: `1px solid ${r.passed ? "rgba(16,185,129,.25)" : "rgba(239,68,68,.25)"}`,
+              background: r.passed ? "rgba(16,185,129,.06)" : err ? "rgba(239,68,68,.08)" : "rgba(239,68,68,.05)",
+            }}>
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "6px 10px",
+                borderBottom: `1px solid ${r.passed ? "rgba(16,185,129,.2)" : "rgba(239,68,68,.2)"}`,
+              }}>
+                <strong style={{ fontSize: 11 }}>Case {i + 1}</strong>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 4,
+                  color: r.passed ? "var(--green)" : "var(--red)",
+                  background: r.passed ? "rgba(16,185,129,.12)" : "rgba(239,68,68,.1)" }}>
+                  {r.passed ? "✓ PASS" : "✗ FAIL"}
+                </span>
+              </div>
+              <div style={{ padding: "6px 10px", fontSize: 11 }}>
+                {r.input && <div style={{ marginBottom: 3 }}><span style={{ color:"var(--text3)",fontWeight:600 }}>Input: </span><span style={{ fontFamily:"var(--font-mono)",color:"var(--text2)" }}>{r.input.slice(0,120)}</span></div>}
+                <div style={{ marginBottom: 3 }}><span style={{ color:"var(--text3)",fontWeight:600 }}>Output: </span><span style={{ fontFamily:"var(--font-mono)",color:r.passed?"var(--green)":"var(--red)" }}>{(r.output||"(empty)").slice(0,200)}</span></div>
+                {!r.passed && r.expected && <div style={{ marginBottom:3 }}><span style={{ color:"var(--text3)",fontWeight:600 }}>Expected: </span><span style={{ fontFamily:"var(--font-mono)",color:"var(--green2)" }}>{r.expected.slice(0,200)}</span></div>}
+                {r.stderr && <pre style={{ margin:"4px 0 0",padding:6,borderRadius:4,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.15)",fontSize:10,color:"var(--red)",fontFamily:"var(--font-mono)",whiteSpace:"pre-wrap",wordBreak:"break-word" }}>{r.stderr.slice(0,300)}</pre>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
 
-      {/* ── Left: Problem ── */}
-      <div style={{ width:"43%", minWidth:340, overflowY:"auto", borderRight:"1px solid var(--border)", display:"flex", flexDirection:"column" }}>
-        {/* Problem header */}
-        <div style={{ padding:"14px 18px", borderBottom:"1px solid var(--border)", background:"var(--bg2)", flexShrink:0 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-            <span style={{ color:"var(--text3)", fontSize:13, fontFamily:"var(--font-mono)" }}>#{problem.id}</span>
-            <h3 style={{ fontSize:15, flex:1 }}>{problem.title}</h3>
-            {isSolved && <span className="tag tag-green">✓ Solved</span>}
-            <DifficultyTag difficulty={problem.difficulty} />
+/* ── Main Editor Page ────────────────────────────────────── */
+export default function EditorPage() {
+  const { id }       = useParams();
+  const navigate     = useNavigate();
+  const { user, userProfile, darkMode, markProblemSolved, awardXP, notifyProgress } = useStore();
+  useStore(state => state.contentRevision);
+  const editorRef    = useRef(null);
+  const [lang,        setLang]        = useState("Python 3");
+  const [code,        setCode]        = useState("");
+  const [loadedStorageKey, setLoadedStorageKey] = useState(null);
+  const [testInput,   setTestInput]   = useState("");
+  const [running,     setRunning]     = useState(false);
+  const [results,     setResults]     = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const [activeTab,   setActiveTab]   = useState("statement");
+  const allProblems = getAllProblems();
+
+  const problemId = id ? Number(id) : null;
+  const problem   = useMemo(() => allProblems.find(p => Number(p.id) === problemId), [allProblems, problemId]);
+  const isSolved  = userProfile?.solved_problems?.includes(problemId);
+  const storageKey = problemId ? codeKey(user?.uid || "guest", problemId, lang) : null;
+
+  /* ── Sorted problem list for navigation ─────────────────── */
+  const sorted     = useMemo(() => [...allProblems].sort((a, b) => Number(a.id) - Number(b.id)), [allProblems]);
+  const idx        = useMemo(() => sorted.findIndex(p => p.id === problemId), [sorted, problemId]);
+  const prevProb   = idx > 0                 ? sorted[idx - 1] : null;
+  const nextProb   = idx < sorted.length - 1 ? sorted[idx + 1] : null;
+
+  const goTo = useCallback((p) => {
+    if (!p) return;
+    navigate(`/editor/${p.id}`);
+    setResults([]);
+    setShowResults(false);
+    setActiveTab("statement");
+    setTestInput("");
+  }, [navigate]);
+
+  const details = useMemo(() => {
+    if (!problem) return null;
+    return {
+      ...(PROBLEM_DETAILS?.[problemId] || {}),
+      ...problem,
+      statement: problem.statement || PROBLEM_DETAILS?.[problemId]?.statement || `Solve: ${problem.title}`,
+      examples: problem.examples || PROBLEM_DETAILS?.[problemId]?.examples || [],
+      constraints: problem.constraints || PROBLEM_DETAILS?.[problemId]?.constraints || [],
+      hints: problem.hints || PROBLEM_DETAILS?.[problemId]?.hints || ["Read the problem carefully.", "Check edge cases."],
+      testCases: problem.testCases || PROBLEM_DETAILS?.[problemId]?.testCases || [],
+      starterCode: problem.starterCode || PROBLEM_DETAILS?.[problemId]?.starterCode || {},
+    };
+  }, [problem, problemId]);
+
+  /* ── Language change ─────────────────────────────────────── */
+  const changeLang = useCallback((newLang) => {
+    setLang(newLang);
+    const saved = problemId ? localStorage.getItem(codeKey(user?.uid || "guest", problemId, newLang)) : null;
+    setCode(saved || details?.starterCode?.[newLang] || defaultStarter(newLang));
+  }, [details, problemId, user]);
+
+  /* ── Redirect bare /editor to last problem ──────────────── */
+  useEffect(() => {
+    if (id) return;
+    const lastId   = Number(localStorage.getItem(LAST_KEY));
+    const fallback = allProblems[0]?.id;
+    const target   = allProblems.some(p => Number(p.id) === lastId) ? lastId : fallback;
+    if (target) navigate(`/editor/${target}`, { replace: true });
+  }, [id, navigate, allProblems]);
+
+  /* ── Load code when problem / lang changes ──────────────── */
+  useEffect(() => {
+    if (!problem || !details || !storageKey) return;
+    localStorage.setItem(LAST_KEY, String(problemId));
+    const saved = localStorage.getItem(storageKey);
+    setCode(saved || details.starterCode?.[lang] || defaultStarter(lang));
+    setLoadedStorageKey(storageKey);
+  }, [problem, details, lang, problemId, storageKey]); // eslint-disable-line
+
+  /* ── Auto-save code ─────────────────────────────────────── */
+  useEffect(() => {
+    if (storageKey && loadedStorageKey === storageKey && code) localStorage.setItem(storageKey, code);
+  }, [storageKey, loadedStorageKey, code]);
+
+  /* ── Ctrl/Cmd+Enter to run ──────────────────────────────── */
+  useEffect(() => {
+    const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); handleRun(); } };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }); // eslint-disable-line
+
+  /* ── Record a submission for the activity heatmap / trend chart ─ */
+  const recordSubmission = useCallback(async (verdict, idToken, details = {}) => {
+    if (!user?.uid || !problemId) return true;
+    try {
+      await createSubmission({
+        uid: user.uid,
+        problem_id: problemId,
+        problem_title: problem?.title || "",
+        language: lang,
+        code,
+        verdict,
+        ...details,
+      }, idToken);
+      notifyProgress();
+      return true;
+    } catch (err) {
+      toast.error(`Progress was not saved: ${err.message}`);
+      return false;
+    }
+  }, [user, problemId, problem, lang, code, notifyProgress]);
+
+  /* ── Run Code ───────────────────────────────────────────── */
+  const handleRun = useCallback(async () => {
+    if (!code.trim()) { toast.error("Code is empty"); return false; }
+    setRunning(true); setResults([]); setShowResults(false);
+    try {
+      const idToken = await user?.getIdToken?.();
+      if (!idToken) throw new Error("Please sign in again before running code.");
+      const cases = details?.testCases || [];
+      if (cases.length === 0 && !testInput.trim()) {
+        const res = await runCode({ sourceCode: buildSrc({ sourceCode: code, language: lang, stdin: "" }), language: lang, idToken });
+        const passed = !res.demo && res.verdict === "Accepted";
+        setResults([{ verdict: res.demo ? "Demo Mode" : res.verdict, output: res.stdout || res.stderr || "", stderr: res.stderr || "", passed }]);
+        const persisted = res.demo ? false : await recordSubmission(res.verdict, idToken, { runtime: res.time || null, memory: res.memory || null });
+        if (passed && persisted && problemId && !isSolved) {
+          const marked = await markProblemSolved(problemId).catch(() => false);
+          if (marked) {
+            try { await awardXP(problem.xp, `Solved: ${problem.title}`); }
+            catch (err) { toast.error(`Solution saved, but XP was not updated: ${err.message}`); }
+            toast.success(`+${problem.xp} XP earned!`, { icon: "⚡" });
+          }
+        }
+        setShowResults(true);
+        return passed;
+      } else {
+        const custom   = testInput.trim() ? [{ input: testInput, expected: "" }] : [];
+        const toRun    = cases.length > 0 ? [...cases, ...custom] : custom;
+        const res      = [];
+        for (const tc of toRun) {
+          try {
+            const stdin  = tc.input || "";
+            const result = await runCode({ sourceCode: buildSrc({ sourceCode: code, language: lang, stdin }), language: lang, stdin, idToken });
+            const output = result.stdout || "";
+            const passed = !result.demo && result.verdict === "Executed" && Boolean(tc.expected) && cmpProblem(output, tc.expected, problemId);
+            res.push({ input: stdin, expected: tc.expected || "", output, stderr: result.stderr || "", verdict: passed ? "Accepted" : result.verdict, passed });
+          } catch (err) {
+            res.push({ input: tc.input || "", expected: tc.expected || "", output: "", stderr: err.message, verdict: "Error", passed: false });
+          }
+        }
+        setResults(res);
+        const overallVerdict = res.every(r => r.passed)
+          ? "Accepted"
+          : (res.find(r => r.verdict !== "Accepted")?.verdict || "Wrong Answer");
+        const canPersist = res.every(result => !["Demo Mode", "Configuration Error", "Error"].includes(result.verdict));
+        const persisted = canPersist ? await recordSubmission(overallVerdict, idToken) : false;
+        if (res.every(r => r.passed) && persisted && toRun.length > 0) {
+          toast.success("🎉 All test cases passed!");
+          if (problemId && !isSolved) {
+            const marked = await markProblemSolved(problemId).catch(() => false);
+            if (marked) {
+              try { await awardXP(problem.xp, `Solved: ${problem.title}`); }
+              catch (err) { toast.error(`Solution saved, but XP was not updated: ${err.message}`); }
+              toast.success(`+${problem.xp} XP earned!`, { icon: "⚡" });
+            }
+          }
+        }
+        setShowResults(true);
+        return res.every(r => r.passed);
+      }
+    } catch (err) {
+      toast.error("Run error: " + err.message);
+      setResults([{ verdict: "Error", output: "", stderr: err.message, passed: false }]);
+      setShowResults(true);
+      return false;
+    } finally {
+      setRunning(false);
+    }
+  }, [user, code, lang, details, testInput, problemId, problem, isSolved, markProblemSolved, awardXP, recordSubmission]);
+
+  const handleSubmit = useCallback(async () => {
+    if (running) return;
+    const accepted = await handleRun();
+    if (accepted && nextProb) {
+      toast.success("Solution accepted. Opening the next problem…");
+      goTo(nextProb);
+    } else if (accepted) {
+      toast.success("Solution accepted. You completed the last problem!");
+    }
+  }, [running, handleRun, nextProb, goTo]);
+
+  /* ── Not found ──────────────────────────────────────────── */
+  if (id && !problem) return (
+    <div style={{ textAlign: "center", padding: "60px 20px" }}>
+      <div style={{ fontSize: 36, marginBottom: 14 }}>📋</div>
+      <h2>Problem #{id} not found</h2>
+      <button onClick={() => navigate("/problems")} style={{ marginTop: 16, padding: "9px 22px", borderRadius: 8, background: "var(--gradient-primary)", color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+        ← Problems List
+      </button>
+    </div>
+  );
+
+  if (!id) return (
+    <div style={{ textAlign: "center", padding: "80px 20px" }}>
+      <div className="spin-anim" style={{ width: 28, height: 28, border: "3px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", margin: "0 auto 12px" }} />
+      <p style={{ color: "var(--text3)" }}>Loading last problem…</p>
+    </div>
+  );
+
+  /* ─────────────────────────────────────────────────────────
+     SPLIT VIEW  (fills remaining viewport below navbar)
+  ───────────────────────────────────────────────────────── */
+  return (
+    <div style={{
+      display: "flex",
+      /* viewport height minus the nav bar height that Layout already added */
+      height: "calc(100vh - var(--nav-height))",
+      overflow: "hidden",
+      background: "var(--bg1)",
+    }}>
+
+      {/* ════════════ LEFT — Problem Panel ════════════════ */}
+      <div style={{
+        flex: "0 0 420px", maxWidth: 480, minWidth: 280,
+        display: "flex", flexDirection: "column",
+        background: "var(--bg2)", borderRight: "1px solid var(--border)",
+        overflow: "hidden",
+      }}>
+
+        {/* ── Top: Prev / counter / Next ────────────────── */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          padding: "8px 12px", borderBottom: "1px solid var(--border)",
+          flexShrink: 0, background: "var(--bg3)",
+        }}>
+          {/* PREV */}
+          <button
+            onClick={() => goTo(prevProb)}
+            disabled={!prevProb}
+            title={prevProb ? `← #${prevProb.id} ${prevProb.title}` : "No previous problem"}
+            style={{
+              flex: 1, padding: "6px 0", borderRadius: 7,
+              border: "1px solid var(--border)",
+              background: prevProb ? "var(--bg2)" : "transparent",
+              color: prevProb ? "var(--text)" : "var(--text3)",
+              opacity: prevProb ? 1 : 0.4,
+              cursor: prevProb ? "pointer" : "not-allowed",
+              fontSize: 12, fontWeight: 700, fontFamily: "var(--font-sans)",
+              transition: "all .15s",
+            }}
+            onMouseEnter={e => { if (prevProb) { e.currentTarget.style.borderColor = "var(--accent3)"; e.currentTarget.style.color = "var(--accent3)"; }}}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = prevProb ? "var(--text)" : "var(--text3)"; }}
+          >
+            ← Prev
+          </button>
+
+          {/* Counter — click to go to problems list */}
+          <button
+            onClick={() => navigate("/problems")}
+            title="Back to problem list"
+            style={{
+              padding: "5px 10px", borderRadius: 7,
+              border: "1px solid var(--border)", background: "var(--bg2)",
+              color: "var(--text3)", fontSize: 11, fontWeight: 600,
+              cursor: "pointer", fontFamily: "var(--font-sans)",
+            }}
+          >
+            {idx + 1}/{sorted.length}
+          </button>
+
+          {/* NEXT */}
+          <button
+            onClick={() => goTo(nextProb)}
+            disabled={!nextProb}
+            title={nextProb ? `#${nextProb.id} ${nextProb.title} →` : "No next problem"}
+            style={{
+              flex: 1, padding: "6px 0", borderRadius: 7,
+              border: nextProb ? "1px solid var(--accent2)" : "1px solid var(--border)",
+              background: nextProb ? "linear-gradient(135deg,var(--accent2),var(--accent))" : "transparent",
+              color: nextProb ? "#fff" : "var(--text3)",
+              opacity: nextProb ? 1 : 0.4,
+              cursor: nextProb ? "pointer" : "not-allowed",
+              fontSize: 12, fontWeight: 700, fontFamily: "var(--font-sans)",
+              transition: "all .15s",
+              boxShadow: nextProb ? "0 2px 8px rgba(99,102,241,.35)" : "none",
+            }}
+          >
+            Next →
+          </button>
+        </div>
+
+        {/* ── Problem title & meta ───────────────────────── */}
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text3)", fontFamily: "var(--font-mono)", fontWeight: 700 }}>#{problemId}</span>
+            {isSolved && <span style={{ color: "var(--green)", fontSize: 14, fontWeight: 700 }} title="Solved">✓ Solved</span>}
           </div>
-          <div style={{ display:"flex", gap:4, marginBottom:10, flexWrap:"wrap" }}>
-            {["problem","solution","discuss"].map(p => (
-              <button key={p} onClick={() => setPanel(p)} style={{
-                padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:600,
-                border:"1px solid var(--border)", cursor:"pointer", fontFamily:"inherit", transition:"all .15s",
-                background: panel===p ? "var(--accent2)" : "transparent",
-                color:      panel===p ? "#fff"            : "var(--text2)",
-              }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
-            ))}
-          </div>
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-            {problem.topics.map(t => <Tag key={t} style={{ fontSize:10 }}>{t}</Tag>)}
-            {(problem.companies||[]).slice(0,3).map(c => (
-              <span key={c} style={{ fontSize:10, color:"var(--text3)", background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:20, padding:"2px 8px" }}>🏢{c}</span>
+          <h3 style={{ margin: "0 0 8px", fontSize: 15, lineHeight: 1.35, color: "var(--text)" }}>{problem?.title}</h3>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <DifficultyTag difficulty={problem?.difficulty} />
+            <span style={{ fontSize: 11, color: "var(--yellow)", fontWeight: 700 }}>+{problem?.xp} XP</span>
+            {(problem?.companies || []).slice(0, 2).map(c => (
+              <span key={c} className="tag tag-blue" style={{ fontSize: 10 }}>🏢 {c}</span>
             ))}
           </div>
         </div>
 
-        {/* Panel content */}
-        <div style={{ flex:1, padding:18, overflowY:"auto" }}>
-          {panel === "problem" && detail && (
+        {/* ── Tabs ──────────────────────────────────────── */}
+        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          {["statement", "examples", "hints"].map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              style={{
+                flex: 1, padding: "9px 4px", fontSize: 12, fontWeight: 600,
+                background: "none", border: "none", cursor: "pointer",
+                fontFamily: "var(--font-sans)",
+                color: activeTab === t ? "var(--accent3)" : "var(--text3)",
+                borderBottom: activeTab === t ? "2px solid var(--accent3)" : "2px solid transparent",
+              }}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Tab content ───────────────────────────────── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+          {activeTab === "statement" && (
             <>
-              <div style={{ fontSize:13, lineHeight:1.8, color:"var(--text2)", marginBottom:18 }}>
-                <ReactMarkdown>{detail.statement}</ReactMarkdown>
+              <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.75, whiteSpace: "pre-wrap", marginBottom: 14 }}>
+                {details?.statement}
               </div>
-              <h4 style={{ marginBottom:10 }}>Examples</h4>
-              {detail.examples.map((ex, i) => (
-                <div key={i} style={{ background:"var(--bg3)", borderRadius:8, padding:12, marginBottom:10, fontFamily:"var(--font-mono)", fontSize:12, lineHeight:1.9, border:"1px solid var(--border)" }}>
-                  <div><span style={{ color:"var(--text3)" }}>Input:  </span>{ex.input}</div>
-                  <div><span style={{ color:"var(--text3)" }}>Output: </span><span style={{ color:"var(--green)" }}>{ex.output}</span></div>
-                  {ex.explanation && <div><span style={{ color:"var(--text3)" }}>Explain: </span>{ex.explanation}</div>}
-                </div>
-              ))}
-              <h4 style={{ margin:"16px 0 8px" }}>Constraints</h4>
-              <div style={{ fontFamily:"var(--font-mono)", fontSize:12, color:"var(--text2)", lineHeight:2 }}>
-                {detail.constraints.map((c,i) => <div key={i}>• {c}</div>)}
-              </div>
-              {/* Hints */}
-              <div style={{ marginTop:18 }}>
-                <h4 style={{ marginBottom:10 }}>💡 Hints</h4>
-                {detail.hints.map((h, i) => (
-                  hintIdx >= i ? (
-                    <div key={i} style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", borderLeft:"3px solid var(--yellow)", borderRadius:"0 8px 8px 0", padding:"10px 14px", fontSize:12, color:"var(--text2)", marginBottom:8, lineHeight:1.7 }}>
-                      💡 {h}
-                    </div>
-                  ) : null
-                ))}
-                {hintIdx < detail.hints.length - 1 && (
-                  <button className="btn btn-outline btn-sm" onClick={() => setHintIdx(v => v+1)}>
-                    Show Hint {hintIdx+2}
-                  </button>
-                )}
-              </div>
-              <div style={{ marginTop:16, display:"flex", gap:16, fontSize:11, color:"var(--text3)" }}>
-                <span>Acceptance: <b style={{ color:"var(--text2)" }}>{problem.acceptance}%</b></span>
-                <span>XP: <b style={{ color:"var(--yellow)" }}>+{problem.xp}</b></span>
-              </div>
+              {(details?.constraints || []).length > 0 && <>
+                <h4 style={{ marginBottom: 6, color: "var(--text3)" }}>Constraints</h4>
+                <ul style={{ margin: 0, paddingLeft: 18, color: "var(--text3)", fontSize: 12, lineHeight: 1.9 }}>
+                  {details.constraints.map((c, i) => <li key={i}>{c}</li>)}
+                </ul>
+              </>}
             </>
           )}
-
-          {panel === "problem" && !detail && (
-            <div style={{ padding:20 }}>
-              <h3 style={{ marginBottom:12 }}>{problem.id}. {problem.title}</h3>
-              <p style={{ color:"var(--text2)", lineHeight:1.8 }}>
-                Solve this {problem.difficulty.toLowerCase()} level problem involving {problem.topics.slice(0,2).join(" and ")}.
-                Write a solution that handles all edge cases efficiently.
-              </p>
-              <div style={{ marginTop:16 }}>
-                <h4 style={{ marginBottom:8 }}>Topics</h4>
-                {problem.topics.map(t => <Tag key={t} style={{ marginRight:6, marginBottom:6 }}>{t}</Tag>)}
-              </div>
-              <div style={{ marginTop:16, padding:12, background:"var(--bg3)", borderRadius:8, fontSize:12, color:"var(--text3)" }}>
-                💡 Full problem statement, examples and test cases coming soon. Use custom input to test your solution.
-              </div>
-            </div>
-          )}
-
-          {panel === "solution" && (
-            <div>
-              <h4 style={{ marginBottom:12 }}>📖 Editorial Solution</h4>
-              {detail?.editorial ? (
-                <div style={{ fontSize:12, lineHeight:1.8 }}>
-                  <ReactMarkdown>{detail.editorial}</ReactMarkdown>
+          {activeTab === "examples" && (
+            (details?.examples || []).length > 0
+              ? details.examples.map((ex, i) => (
+                <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: "rgba(99,102,241,.05)", border: "1px solid var(--border)" }}>
+                  <strong style={{ fontSize: 12 }}>Example {i + 1}</strong>
+                  <pre style={{ fontSize: 11, marginTop: 8, fontFamily: "var(--font-mono)", background: "var(--bg3)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", lineHeight: 1.5, color: "var(--text2)" }}>
+                    {`Input:  ${ex.input}\nOutput: ${ex.output}`}
+                  </pre>
+                  {ex.explanation && <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 6 }}>💡 {ex.explanation}</p>}
                 </div>
-              ) : (
-                <div style={{ color:"var(--text3)", fontSize:12 }}>
-                  {isSolved ? "Editorial available after first solve." : "Solve the problem first to unlock the editorial."}
-                </div>
-              )}
-            </div>
+              ))
+              : <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", paddingTop: 20 }}>No examples available.</p>
           )}
+          {activeTab === "hints" && (
+            (details?.hints || []).length > 0
+              ? details.hints.map((h, i) => (
+                <div key={i} style={{ marginBottom: 10, padding: 12, borderRadius: 8, background: "rgba(245,158,11,.05)", border: "1px solid rgba(245,158,11,.18)" }}>
+                  <p style={{ fontSize: 12, color: "var(--text2)", margin: 0, lineHeight: 1.65 }}>💡 {h}</p>
+                </div>
+              ))
+              : <p style={{ color: "var(--text3)", fontSize: 12, textAlign: "center", paddingTop: 20 }}>No hints available.</p>
+          )}
+        </div>
 
-          {panel === "discuss" && (
-            <div>
-              <h4 style={{ marginBottom:14 }}>💬 Top Discussions</h4>
-              {[
-                `Clean O(n) solution with explanation — ${problem.topics[0]}`,
-                "3 different approaches — brute force to optimal",
-                "Why does this approach work? Edge cases explained",
-                "Space optimization tricks for this problem",
-              ].map((t, i) => (
-                <div key={i} onClick={() => navigate("/forum")} style={{ padding:"10px 12px", background:"var(--bg3)", borderRadius:8, marginBottom:8, fontSize:12, color:"var(--accent3)", cursor:"pointer", border:"1px solid var(--border)" }}>
-                  📣 {t}
-                </div>
-              ))}
-              <button className="btn btn-outline btn-sm" style={{ width:"100%", marginTop:4 }} onClick={() => navigate("/forum")}>
-                View all discussions →
-              </button>
-            </div>
-          )}
+        {/* ── Bottom navigation bar ─────────────────────── */}
+        <div style={{
+          padding: "8px 12px", borderTop: "1px solid var(--border)",
+          display: "flex", gap: 6, flexShrink: 0, background: "var(--bg3)",
+        }}>
+          <button onClick={() => goTo(prevProb)} disabled={!prevProb}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 7,
+              border: "1px solid var(--border)", background: prevProb ? "var(--bg2)" : "transparent",
+              color: prevProb ? "var(--text)" : "var(--text3)",
+              opacity: prevProb ? 1 : 0.35, cursor: prevProb ? "pointer" : "not-allowed",
+              fontSize: 11, fontWeight: 700, fontFamily: "var(--font-sans)",
+            }}>
+            {prevProb ? `← #${prevProb.id}` : "← No Prev"}
+          </button>
+
+          <button onClick={() => navigate("/problems")}
+            style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg2)", color: "var(--text3)", cursor: "pointer", fontSize: 11, fontFamily: "var(--font-sans)" }}>
+            📋 List
+          </button>
+
+          <button onClick={() => goTo(nextProb)} disabled={!nextProb}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 7,
+              border: nextProb ? "1px solid var(--accent2)" : "1px solid var(--border)",
+              background: nextProb ? "linear-gradient(135deg,var(--accent2),var(--accent))" : "transparent",
+              color: nextProb ? "#fff" : "var(--text3)",
+              opacity: nextProb ? 1 : 0.35, cursor: nextProb ? "pointer" : "not-allowed",
+              fontSize: 11, fontWeight: 700, fontFamily: "var(--font-sans)",
+              boxShadow: nextProb ? "0 2px 8px rgba(99,102,241,.3)" : "none",
+            }}>
+            {nextProb ? `#${nextProb.id} →` : "No Next →"}
+          </button>
         </div>
       </div>
 
-      {/* ── Right: Editor ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0 }}>
-        {/* Toolbar */}
-        <div style={{ padding:"8px 16px", background:"var(--bg2)", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-          <div style={{ display:"flex", gap:4 }}>
-            <div style={{ width:11,height:11,borderRadius:"50%",background:"#ff5f56" }} />
-            <div style={{ width:11,height:11,borderRadius:"50%",background:"#ffbd2e" }} />
-            <div style={{ width:11,height:11,borderRadius:"50%",background:"#27c93f" }} />
+      {/* ════════════ RIGHT — Code Editor ═════════════════ */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg1)" }}>
+
+        {/* Editor toolbar */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 14px", borderBottom: "1px solid var(--border)",
+          background: "var(--bg2)", flexShrink: 0, gap: 10,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select value={lang} onChange={e => changeLang(e.target.value)}
+              style={{ width: "auto", minWidth: 110, fontSize: 12, padding: "5px 8px" }}>
+              {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <span style={{ fontSize: 10, color: "var(--text3)" }}>Ctrl+Enter to run</span>
           </div>
-          <select value={lang} onChange={e=>setLang(e.target.value)} style={{ width:130,fontSize:11,padding:"3px 8px",color:"var(--accent3)",fontWeight:600 }}>
-            {LANGUAGES.map(l => <option key={l}>{l}</option>)}
-          </select>
-          <select value={theme} onChange={e=>setTheme(e.target.value)} style={{ width:105,fontSize:11,padding:"3px 8px" }}>
-            <option value="vs-dark">Dark</option>
-            <option value="vs-light">Light</option>
-            <option value="hc-black">High Contrast</option>
-          </select>
-          <select value={fontSize} onChange={e=>setFontSize(Number(e.target.value))} style={{ width:72,fontSize:11,padding:"3px 8px" }}>
-            {[11,12,13,14,15,16].map(s => <option key={s} value={s}>{s}px</option>)}
-          </select>
-          <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
-            <button className="btn btn-outline btn-sm" onClick={() => { setCode(detail?.starterCode?.[lang] ?? defaultStarter(lang)); localStorage.removeItem(`cb_code_${problem.id}_${lang}`); }}>↩ Reset</button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {isSolved && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--green)", background: "rgba(16,185,129,.1)", border: "1px solid rgba(16,185,129,.25)", padding: "3px 8px", borderRadius: 20 }}>
+                ✓ Solved
+              </span>
+            )}
+            <button
+              onClick={handleRun}
+              disabled={running}
+              style={{
+                padding: "7px 20px", borderRadius: 7, fontWeight: 700, fontSize: 12,
+                background: running ? "var(--bg4)" : "var(--green)",
+                color: "#fff", border: "none",
+                cursor: running ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+                transition: "all .15s", fontFamily: "var(--font-sans)",
+              }}>
+              {running
+                ? <><span className="spin-anim" style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,.5)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block" }} /> Running…</>
+                : "▶ Run"}
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={running}
+              style={{
+                padding: "7px 16px", borderRadius: 7, fontWeight: 700, fontSize: 12,
+                background: running ? "var(--bg4)" : "var(--accent)", color: "#fff", border: "none",
+                cursor: running ? "not-allowed" : "pointer", fontFamily: "var(--font-sans)",
+              }}>
+              ✓ Submit & Next
+            </button>
           </div>
         </div>
 
-        {/* Monaco */}
-        <div style={{ flex:1, overflow:"hidden" }}>
+        {/* Monaco Editor — fills remaining space */}
+        <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
           <MonacoEditor
             height="100%"
-            language={MONACO_LANG[lang] || "python"}
-            value={code}
-            onChange={saveCode}
-            theme={theme}
-            options={{ fontSize, minimap:{ enabled:false }, scrollBeyondLastLine:false, lineNumbers:"on", wordWrap:"on", tabSize:4, automaticLayout:true, fontFamily:"'JetBrains Mono','Fira Code',monospace", fontLigatures:true, bracketPairColorization:{ enabled:true }, suggestOnTriggerCharacters:true }}
+            language={LANG_MONACO[lang] || "python"}
+            value={code || defaultStarter(lang)}
+            onChange={val => setCode(val || "")}
+            theme={darkMode ? "vs-dark" : "vs"}
+            onMount={editor => { editorRef.current = editor; }}
+            options={{
+              fontSize: 13,
+              fontFamily: "'JetBrains Mono','Fira Code',monospace",
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              lineNumbers: "on",
+              tabSize: 2,
+              padding: { top: 12 },
+              wordWrap: "on",
+              smoothScrolling: true,
+              cursorBlinking: "smooth",
+              cursorSmoothCaretAnimation: "on",
+              bracketPairColorization: { enabled: true },
+              autoClosingBrackets: "always",
+              autoClosingQuotes: "always",
+              formatOnPaste: true,
+              renderWhitespace: "selection",
+            }}
           />
         </div>
 
-        {/* Bottom panels */}
-        <div style={{ background:"var(--bg2)", borderTop:"1px solid var(--border)", flexShrink:0 }}>
-          {/* Custom input */}
-          <div style={{ padding:"8px 16px", borderBottom:"1px solid var(--border)" }}>
-            <div style={{ fontSize:11, color:"var(--text3)", marginBottom:4 }}>Custom Input</div>
-            <textarea value={input} onChange={e=>setInput(e.target.value)} rows={2}
-              style={{ resize:"none", fontFamily:"var(--font-mono)", fontSize:11, background:"var(--bg3)" }} />
-          </div>
+        {/* Custom test input */}
+        <div style={{ padding: "8px 12px", borderTop: "1px solid var(--border)", background: "var(--bg2)", flexShrink: 0 }}>
+          <label style={{ marginBottom: 5, fontSize: 10 }}>Custom Input (optional)</label>
+          <textarea
+            value={testInput}
+            onChange={e => setTestInput(e.target.value)}
+            placeholder={details?.testCases?.length ? "Built-in tests run first. Add custom input here." : "One argument per line"}
+            spellCheck={false}
+            style={{ minHeight: 48, maxHeight: 90, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.4 }}
+          />
+        </div>
 
-          {/* Output */}
-          {output && (
-            <div style={{ padding:"8px 16px", borderBottom:"1px solid var(--border)", maxHeight:130, overflowY:"auto" }}>
-              {output.status === "running" ? (
-                <div style={{ display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text2)" }}>
-                  <div className="spin-anim" style={{ width:12,height:12,border:"2px solid var(--border)",borderTopColor:"var(--accent)",borderRadius:"50%" }} />
-                  {output.message || "Running..."}
-                </div>
-              ) : (
-                <div>
-                  <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
-                    <span style={{ fontSize:14, fontWeight:700, color: VERDICT_COLORS[output.verdict] || "var(--text)" }}>
-                      {output.verdict === "Accepted" ? "✅" : "❌"} {output.verdict}
-                    </span>
-                    {output.time && <span style={{ fontSize:11, color:"var(--text3)" }}>· {output.time}s · {output.memory ? Math.round(output.memory/1024)+"MB" : ""}</span>}
-                  </div>
-                  {output.stdout && <div style={{ fontFamily:"var(--font-mono)",fontSize:11,color:"var(--green)",lineHeight:1.6 }}>{output.stdout}</div>}
-                  {output.stderr && <div style={{ fontFamily:"var(--font-mono)",fontSize:11,color:"var(--red)",lineHeight:1.6 }}>{output.stderr}</div>}
-                </div>
-              )}
+        {/* Results */}
+        <AnimatePresence>
+          {showResults && results.length > 0 && (
+            <div style={{ maxHeight: "40%", flexShrink: 0, overflow: "hidden" }}>
+              <ResultsPanel results={results} onClose={() => setShowResults(false)} />
             </div>
           )}
-
-          {/* Actions */}
-          <div style={{ padding:"10px 16px", display:"flex", gap:8 }}>
-            <Button variant="outline" onClick={handleRun} loading={running} style={{ flex:1 }}>▶ Run Code</Button>
-            <Button variant="primary" onClick={handleSubmit} loading={running} style={{ flex:1 }}>⬆ Submit</Button>
-          </div>
-        </div>
+        </AnimatePresence>
       </div>
     </div>
   );

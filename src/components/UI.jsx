@@ -1,14 +1,15 @@
 // src/components/UI.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 
 // ─── Button ───────────────────────────────────────────────
 export function Button({ children, variant = "primary", size = "", onClick, disabled, className = "", type = "button", loading = false, style = {} }) {
   return (
     <button type={type} className={`btn btn-${variant}${size ? " btn-"+size : ""} ${className}`}
       onClick={onClick} disabled={disabled || loading} style={style}>
-      {loading && <span className="spin-anim" style={{ width:12,height:12,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block" }} />}
-      {children}
+      {loading && <span className="spin-anim" style={{ width:12,height:12,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",marginRight:6 }} />}
+      {loading ? null : children}
     </button>
   );
 }
@@ -81,7 +82,7 @@ export function Avatar({ name = "?", src, size = "" }) {
 // ─── Stat Card ────────────────────────────────────────────
 export function StatCard({ label, value, color, sub, icon, children }) {
   return (
-    <motion.div className="stat-card fade-in" whileHover={{ y:-2 }}>
+    <motion.div className="stat-card fade-in">
       {icon && <div style={{ fontSize:20, marginBottom:8 }}>{icon}</div>}
       <div className="stat-value" style={color ? { color } : {}}>{value}</div>
       <div className="stat-label">{label}</div>
@@ -124,31 +125,31 @@ export function Modal({ isOpen, onClose, title, children, width = 500 }) {
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-  return (
+  return createPortal((
     <AnimatePresence>
-      <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-        style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20 }}
+      <motion.div className="modal-overlay" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
         onClick={onClose}>
-        <motion.div initial={{ scale:.92, opacity:0 }} animate={{ scale:1, opacity:1 }} exit={{ scale:.92, opacity:0 }}
-          style={{ background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:"var(--radius-xl)",padding:26,width:"100%",maxWidth:width,maxHeight:"90vh",overflowY:"auto" }}
+        <motion.div className="modal-box" initial={{ scale:.92, opacity:0 }} animate={{ scale:1, opacity:1 }} exit={{ scale:.92, opacity:0 }}
+          style={{ width, maxWidth: width }}
           onClick={e => e.stopPropagation()}>
           <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18 }}>
             <h3>{title}</h3>
-            <button className="btn btn-outline btn-sm" onClick={onClose}>✕</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>✕</button>
           </div>
           {children}
         </motion.div>
       </motion.div>
     </AnimatePresence>
-  );
+  ), document.body);
 }
 
 // ─── Input ────────────────────────────────────────────────
-export function Input({ label, error, ...props }) {
+export function Input({ label, error, id, ...props }) {
+  const inputId = id || `input-${Math.random().toString(36).slice(2, 8)}`;
   return (
     <div>
-      {label && <label>{label}</label>}
-      <input {...props} />
+      {label && <label htmlFor={inputId}>{label}</label>}
+      <input id={inputId} {...props} />
       {error && <div style={{ fontSize:11, color:"var(--red)", marginTop:3 }}>{error}</div>}
     </div>
   );
@@ -157,7 +158,7 @@ export function Input({ label, error, ...props }) {
 // ─── Toggle Switch ────────────────────────────────────────
 export function Toggle({ value, onChange, label, sub }) {
   return (
-    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid rgba(42,58,92,.4)" }}>
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid var(--border-subtle)" }}>
       <div>
         <div style={{ fontSize:13, fontWeight:500 }}>{label}</div>
         {sub && <div style={{ fontSize:11, color:"var(--text3)", marginTop:2 }}>{sub}</div>}
@@ -176,16 +177,50 @@ export function Toggle({ value, onChange, label, sub }) {
 
 // ─── Activity Heatmap ─────────────────────────────────────
 // data: { "2024-12-01": 3 } — real submission counts from Supabase
+const DAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
+
 export function ActivityHeatmap({ data = {} }) {
-  const cells = [];
-  for (let i = 364; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key   = d.toISOString().split("T")[0];
-    const count = data[key] || 0;
-    cells.push({ key, count, date: d });
-  }
-  const maxCount = Math.max(...cells.map(c => c.count), 1);
+  const scrollRef = useRef(null);
+
+  const { weeks, monthLabels, totalSubmissions, activeDays, maxCount } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // ~53 weeks back, then align the start to a Sunday so rows line up
+    const start = new Date(today);
+    start.setDate(start.getDate() - 370);
+    start.setDate(start.getDate() - start.getDay());
+
+    const cells = [];
+    let totalSubmissions = 0, activeDays = 0, maxCount = 1;
+    const cursor = new Date(start);
+    while (cursor <= today) {
+      const key   = cursor.toISOString().slice(0, 10);
+      const count = data[key] || 0;
+      if (count > 0) { totalSubmissions += count; activeDays += 1; }
+      if (count > maxCount) maxCount = count;
+      cells.push({ key, count, date: new Date(cursor) });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+    const monthLabels = weeks.map((week, i) => {
+      const firstOfMonth = week.find(c => c.date.getDate() === 1);
+      if (firstOfMonth) return firstOfMonth.date.toLocaleString("default", { month: "short" });
+      return i === 0 ? week[0].date.toLocaleString("default", { month: "short" }) : "";
+    });
+
+    return { weeks, monthLabels, totalSubmissions, activeDays, maxCount };
+  }, [data]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [weeks]);
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
   const getClass = count => {
     if (!count) return "";
     const p = count / maxCount;
@@ -194,19 +229,51 @@ export function ActivityHeatmap({ data = {} }) {
     if (p < 0.75) return "l3";
     return "l4";
   };
-  const totalSubmissions = cells.reduce((s, c) => s + c.count, 0);
 
   return (
-    <div>
-      <div className="heatmap">
-        {cells.map(({ key, count }) => (
-          <div key={key} className={`hcell ${getClass(count)}`} title={`${key}: ${count} submission${count !== 1 ? "s" : ""}`} />
-        ))}
+    <div className="heatmap-card">
+      <div className="heatmap-scroll" ref={scrollRef}>
+        <div className="heatmap-grid">
+          <div className="heatmap-corner" />
+          <div className="heatmap-months">
+            {monthLabels.map((m, i) => <div key={i} className="heatmap-month">{m}</div>)}
+          </div>
+          <div className="heatmap-days">
+            {DAY_LABELS.map((d, i) => <div key={i} className="heatmap-daylabel">{d}</div>)}
+          </div>
+          <div className="heatmap">
+            {weeks.map((week, wi) => (
+              <div key={wi} className="heatmap-col">
+                {week.map(c => {
+                  const isFuture = c.date > today;
+                  return (
+                    <div
+                      key={c.key}
+                      className={`hcell ${isFuture ? "future" : getClass(c.count)}`}
+                      title={isFuture ? "" : `${c.count} submission${c.count !== 1 ? "s" : ""} \u00b7 ${c.date.toLocaleDateString("default", { month: "short", day: "numeric", year: "numeric" })}`}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      <div style={{ display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:10,color:"var(--text3)" }}>
-        Less
-        {["","l1","l2","l3","l4"].map((l,i) => <div key={i} className={`hcell ${l}`} style={{ width:10,height:10,display:"inline-block" }} />)}
-        More &nbsp;·&nbsp; <span style={{ color:"var(--accent3)" }}>{totalSubmissions} submissions</span> this year
+      <div className="heatmap-footer">
+        <div>
+          <span className="heatmap-stat-num">{totalSubmissions}</span> submission{totalSubmissions !== 1 ? "s" : ""}
+          {" \u00b7 "}
+          <span className="heatmap-stat-num">{activeDays}</span> active day{activeDays !== 1 ? "s" : ""} in the past year
+        </div>
+        <div className="heatmap-legend">
+          <span>Less</span>
+          <div className="hcell" />
+          <div className="hcell l1" />
+          <div className="hcell l2" />
+          <div className="hcell l3" />
+          <div className="hcell l4" />
+          <span>More</span>
+        </div>
       </div>
     </div>
   );
@@ -281,15 +348,23 @@ export function BarChart({ data, color = "var(--accent)", height = 80, labels })
   const max = Math.max(...data, 1);
   return (
     <div>
-      <div style={{ display:"flex", alignItems:"flex-end", gap:4, height }}>
+      <div style={{ display:"flex", alignItems:"flex-end", gap:8, height }}>
         {data.map((v, i) => (
-          <motion.div key={i} initial={{ height:0 }} animate={{ height:`${(v/max)*100}%` }} transition={{ delay:i*.04 }}
-            style={{ flex:1, borderRadius:"3px 3px 0 0", background: color, minHeight:3 }} title={`${v}`} />
+          <div key={i} style={{ flex:1, height:"100%", display:"flex", flexDirection:"column", justifyContent:"flex-end", alignItems:"center" }}>
+            <span style={{ fontSize:10, fontWeight:700, color: v>0 ? "var(--text2)" : "var(--text3)", marginBottom:4, opacity: v>0 ? 1 : 0.5 }}>{v}</span>
+            <motion.div className="bar-chart-bar" initial={{ height:0 }} animate={{ height:`${Math.max((v/max)*100, v>0?4:0)}%` }} transition={{ delay:i*.05, duration:.5, ease:"easeOut" }}
+              style={{
+                width:"100%", minHeight: v>0 ? 4 : 2, borderRadius:"6px 6px 3px 3px",
+                background: v>0 ? color : "var(--bg3)",
+                border: v>0 ? "none" : "1px dashed var(--border)",
+              }}
+              title={`${v} submission${v!==1?"s":""}`} />
+          </div>
         ))}
       </div>
       {labels && (
-        <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"var(--text3)", marginTop:4 }}>
-          {labels.map((l,i) => <span key={i}>{l}</span>)}
+        <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"var(--text3)", marginTop:8, fontWeight:600 }}>
+          {labels.map((l,i) => <span key={i} style={{ flex:1, textAlign:"center" }}>{l}</span>)}
         </div>
       )}
     </div>
@@ -297,7 +372,57 @@ export function BarChart({ data, color = "var(--accent)", height = 80, labels })
 }
 
 // ─── YouTube Video Player ─────────────────────────────────
-export function VideoPlayer({ videoId, title }) {
+let youtubeApiPromise;
+
+function loadYouTubeApi() {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeApiPromise) return youtubeApiPromise;
+  youtubeApiPromise = new Promise((resolve, reject) => {
+    const previousCallback = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      previousCallback?.();
+      resolve(window.YT);
+    };
+    let script = document.getElementById("youtube-iframe-api");
+    if (!script) {
+      script = document.createElement("script");
+      script.id = "youtube-iframe-api";
+      script.src = "https://www.youtube.com/iframe_api";
+      script.onerror = () => {
+        youtubeApiPromise = null;
+        reject(new Error("YouTube playback events are unavailable."));
+      };
+      document.head.appendChild(script);
+    }
+  });
+  return youtubeApiPromise;
+}
+
+export function VideoPlayer({ videoId, title, onEnded }) {
+  const iframeRef = useRef(null);
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+
+  useEffect(() => {
+    if (!videoId || !iframeRef.current) return undefined;
+    let cancelled = false;
+    let player;
+    loadYouTubeApi().then(YT => {
+      if (cancelled || !iframeRef.current) return;
+      player = new YT.Player(iframeRef.current, {
+        events: {
+          onStateChange: event => {
+            if (event.data === YT.PlayerState.ENDED) onEndedRef.current?.();
+          },
+        },
+      });
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      player?.destroy();
+    };
+  }, [videoId]);
+
   if (!videoId) return (
     <div style={{ background:"var(--bg3)", borderRadius:"var(--radius-lg)", height:200, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10, color:"var(--text3)" }}>
       <span style={{ fontSize:40 }}>▶️</span>
@@ -307,7 +432,8 @@ export function VideoPlayer({ videoId, title }) {
   return (
     <div className="video-container">
       <iframe
-        src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+        ref={iframeRef}
+        src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&rel=0&modestbranding=1`}
         title={title || "Lesson video"}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen

@@ -3,33 +3,43 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { COURSES } from "../data/courses";
-import { Card, ProgressBar, TabBar, Tag, Button, SectionHeader, VideoPlayer } from "../components/UI";
-import { getAllCourseProgress, upsertCourseProgress } from "../services/supabase";
+import { getAllCourses } from "../utils/adminContent";
+import { ProgressBar, TabBar, Button, VideoPlayer } from "../components/UI";
+import { getAllCourseProgress, getCourseProgress, upsertCourseProgress } from "../services/supabase";
 import useStore from "../context/useStore";
 
 // ── Course List ───────────────────────────────────────────
 export default function Courses() {
   const navigate = useNavigate();
-  const { user } = useStore();
+  const { user, progressRevision } = useStore();
+  useStore(state => state.contentRevision);
   const [tab,      setTab]      = useState("All");
   const [search,   setSearch]   = useState("");
   const [progress, setProgress] = useState({}); // { courseId: pct }
   const [loading,  setLoading]  = useState(true);
+  const allCourses = getAllCourses();
 
   // Load REAL progress from Supabase — 0 for new users
   useEffect(() => {
     if (!user?.uid) { setLoading(false); return; }
+    let active = true;
     (async () => {
-      const rows = await getAllCourseProgress(user.uid);
-      const map  = {};
-      rows.forEach(r => { map[r.course_id] = r.progress_pct || 0; });
-      setProgress(map);
-      setLoading(false);
+      setLoading(true);
+      try {
+        const rows = await getAllCourseProgress(await user.getIdToken());
+        const map = {};
+        rows.forEach(row => { map[row.course_id] = row.progress_pct || 0; });
+        if (active) setProgress(map);
+      } catch (error) {
+        if (active) toast.error(`Course progress could not be loaded: ${error.message}`);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
-  }, [user?.uid]);
+    return () => { active = false; };
+  }, [user, progressRevision]);
 
-  const filtered = COURSES.filter(c => {
+  const filtered = allCourses.filter(c => {
     if (tab === "My Courses" && !progress[c.id]) return false;
     if (tab === "Completed"  && progress[c.id] !== 100) return false;
     if (tab !== "All" && tab !== "My Courses" && tab !== "Completed" && c.level !== tab) return false;
@@ -51,6 +61,9 @@ export default function Courses() {
         <TabBar tabs={["All","My Courses","Beginner","Intermediate","Advanced","Completed"]} active={tab} onChange={setTab} />
       </div>
 
+      {loading ? (
+        <div style={{ textAlign:"center",padding:60,color:"var(--text3)" }}>Loading courses...</div>
+      ) : (
       <div className="grid-3">
         {filtered.map((course, i) => {
           const prog = progress[course.id] || 0; // 0 for new users
@@ -105,6 +118,7 @@ export default function Courses() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -113,48 +127,74 @@ export default function Courses() {
 export function CourseDetail() {
   const { courseId }  = useParams();
   const navigate      = useNavigate();
-  const { user, awardXP } = useStore();
+  const { user, awardXP, notifyProgress, progressRevision } = useStore();
+  useStore(state => state.contentRevision);
 
-  const course = COURSES.find(c => c.id === courseId) || COURSES[0];
+  const allCourses = getAllCourses();
+  const course = allCourses.find(c => String(c.id) === String(courseId)) || allCourses[0];
   const [progress,     setProgress]     = useState({});
   const [activeLesson, setActiveLesson] = useState(null);
   const [expandedCh,   setExpandedCh]   = useState(1);
+  const [completingLesson, setCompletingLesson] = useState(null);
 
-  // Load progress
+  // Load progress — uses static import
   useEffect(() => {
     if (!user?.uid) return;
+    let active = true;
     (async () => {
-      const { getCourseProgress } = await import("../services/supabase");
-      const row = await getCourseProgress(user.uid, course.id);
-      const completed = row?.completed_lessons || [];
-      const map = {};
-      completed.forEach(k => { map[k] = true; });
-      setProgress(map);
-      // Auto-open first unfinished chapter
-      for (const ch of course.chapters) {
-        const chDone = ch.lessons.every(l => map[l.id]);
-        if (!chDone) { setExpandedCh(ch.id); break; }
+      try {
+        const row = await getCourseProgress(await user.getIdToken(), String(course.id));
+        const completed = row?.completed_lessons || [];
+        const map = {};
+        completed.forEach(key => { map[key] = true; });
+        if (!active) return;
+        setProgress(map);
+        for (const chapter of course.chapters) {
+          if (!chapter.lessons.every(lesson => map[lesson.id])) { setExpandedCh(chapter.id); break; }
+        }
+      } catch (error) {
+        if (active) toast.error(`Course progress could not be loaded: ${error.message}`);
       }
     })();
-  }, [user?.uid, course.id]);
+    return () => { active = false; };
+  }, [user, course.id, course.chapters, progressRevision]);
 
   // Set first lesson by default
   useEffect(() => {
     if (course.chapters?.[0]?.lessons?.[0]) {
       setActiveLesson(course.chapters[0].lessons[0]);
     }
-  }, [course.id]);
+  }, [course.id, course.chapters]);
 
   const totalLessons   = course.chapters.reduce((s,c) => s + c.lessons.length, 0);
   const doneLessons    = Object.keys(progress).length;
   const progressPct    = Math.round(doneLessons / totalLessons * 100);
 
   const markComplete = async lesson => {
-    if (progress[lesson.id] || !user?.uid) return;
-    await upsertCourseProgress(user.uid, course.id, lesson.id, totalLessons);
-    setProgress(p => ({ ...p, [lesson.id]: true }));
-    await awardXP(15, `Completed lesson: ${lesson.title}`);
-    toast.success(`✅ Lesson complete! +15 XP`);
+    if (progress[lesson.id] || completingLesson === lesson.id || !user?.uid) return;
+    setCompletingLesson(lesson.id);
+    try {
+      await upsertCourseProgress(await user.getIdToken(), course.id, lesson.id);
+      const nextProgress = { ...progress, [lesson.id]: true };
+      setProgress(nextProgress);
+      notifyProgress();
+      const completedAll = course.chapters.every(chapter => chapter.lessons.every(item => nextProgress[item.id]));
+      try {
+        await awardXP(15, `Completed lesson: ${lesson.title}`);
+      } catch (error) {
+        toast.error(`Lesson saved, but XP was not updated: ${error.message}`);
+      }
+      if (completedAll) {
+        toast.success("Course complete! Opening your certificate options.");
+        navigate(`/certificates?tab=eligible&courseId=${encodeURIComponent(course.id)}`);
+      } else {
+        toast.success("✅ Lesson complete! +15 XP");
+      }
+    } catch (error) {
+      toast.error(`Could not save lesson progress: ${error.message}`);
+    } finally {
+      setCompletingLesson(null);
+    }
   };
 
   return (
@@ -220,12 +260,12 @@ export function CourseDetail() {
             <div style={{ fontSize:12,color:"var(--text3)",marginBottom:16 }}>⏱ {activeLesson.duration} · {course.title}</div>
 
             {/* YouTube video player */}
-            <VideoPlayer videoId={activeLesson.videoId} title={activeLesson.title} />
+            <VideoPlayer videoId={activeLesson.videoId} title={activeLesson.title} onEnded={() => markComplete(activeLesson)} />
 
             <div style={{ marginTop:20,display:"flex",gap:10,alignItems:"center" }}>
               {!progress[activeLesson.id] ? (
-                <Button variant="success" onClick={() => markComplete(activeLesson)}>
-                  ✅ Mark as Complete (+15 XP)
+                <Button variant="success" onClick={() => markComplete(activeLesson)} disabled={completingLesson === activeLesson.id}>
+                  {completingLesson === activeLesson.id ? "Saving progress..." : "✅ Mark as Complete (+15 XP)"}
                 </Button>
               ) : (
                 <div style={{ display:"flex",alignItems:"center",gap:6,color:"var(--green)",fontWeight:600,fontSize:13 }}>

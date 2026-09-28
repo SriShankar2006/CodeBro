@@ -2,10 +2,9 @@
 
 ## 🔐 Admin Credentials
 
-**Email:** `admin@codebro.io`  
-**Password:** `Admin123!@#`
+**Email:** the value of `REACT_APP_ADMIN_EMAIL` (default: `admin1@codebro.dev`)
 
-> ⚠️ **Important:** Change your password immediately after first login. Never share these credentials publicly.
+> Important: use a strong private password and never commit or share it.
 
 ---
 
@@ -13,33 +12,31 @@
 
 ### Step 1: Create Admin User in Firebase
 
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select your CodeBro project
-3. Navigate to **Authentication** → **Users**
-4. Click **Create User** button
+1. Copy `.env.example` to `.env` and set the Firebase and Supabase values.
+2. Go to [Firebase Console](https://console.firebase.google.com)
+3. Select your CodeBro project and open **Authentication** → **Users**
+4. Click **Create User**
 5. Fill in the following:
-   - **Email:** `admin@codebro.io`
-   - **Password:** `Admin123!@#`
+  - **Email:** the same value as `REACT_APP_ADMIN_EMAIL`
+  - **Password:** a strong private password
 6. Click **Create**
 
-### Step 2: Set Admin Role in Supabase
+### Step 2: Set up Supabase
 
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
 2. Select your CodeBro project
 3. Navigate to **SQL Editor**
-4. Run the following SQL query:
+4. Run [`SUPABASE_SETUP.sql`](SUPABASE_SETUP.sql), then run this query:
 
 ```sql
-UPDATE users SET role = 'admin' WHERE email = 'admin@codebro.io';
+UPDATE users SET role = 'admin' WHERE email = 'admin1@codebro.dev';
 ```
 
 5. Click **Run**
 
 ### Step 3: Access Admin Dashboard
 
-1. Log in to CodeBro with the admin credentials:
-   - Email: `admin@codebro.io`
-   - Password: `Admin123!@#`
+1. Log in to CodeBro with the Firebase admin credentials.
 
 2. Click on your **Profile Icon** in the top-right navbar
 3. Select **⚙️ Admin Panel** from the dropdown menu
@@ -76,7 +73,7 @@ UPDATE users SET role = 'admin' WHERE email = 'admin@codebro.io';
   - Title, difficulty level, topics
   - XP rewards and acceptance rates
   - Company tags
-- **Edit & Delete:** Modify or remove custom problems
+- **Edit & Delete:** Modify or remove problems. Changes sync through Supabase for all users.
 - **Problem Statistics:** View all problems in the platform
 
 ### Courses Tab
@@ -84,7 +81,7 @@ UPDATE users SET role = 'admin' WHERE email = 'admin@codebro.io';
   - Title, description, level
   - Lessons and estimated hours
   - Tags and icons
-- **Edit & Delete:** Modify or remove custom courses
+- **Edit & Delete:** Modify or remove courses. Changes sync through Supabase for all users.
 - **Course Management:** View all courses with enrollment data
 
 ### Analytics Tab
@@ -119,9 +116,9 @@ Each user profile in the admin dashboard displays:
 
 1. **Change Password:** After first login, immediately change your admin password
 2. **Share Responsibly:** Only give admin credentials to trusted team members
-3. **Audit Trail:** All admin actions are recorded in your database
-4. **Firebase Rules:** Ensure Firebase security rules allow admin operations
-5. **Supabase Policies:** Update RLS (Row Level Security) policies as needed
+3. **Admin Gate:** The app requires the configured admin email and `role = 'admin'` in Supabase.
+4. **Firebase Rules:** Firebase Authentication controls sign-in; create and manage users there.
+5. **Supabase Policies:** Because this app uses Firebase Auth, Supabase cannot validate Firebase tokens with `auth.uid()`. The included policies support the current prototype, not a production security boundary. Use a server endpoint/Firebase Admin SDK or migrate to Supabase Auth before exposing sensitive data publicly.
 
 ---
 
@@ -139,8 +136,8 @@ The profile icon in the navbar now:
 ## 🆘 Troubleshooting
 
 ### Admin Dashboard Not Showing
-- Ensure your Supabase user record has `role = 'admin'`
-- Check that you're logged in with the correct email
+- Ensure the logged-in email matches `REACT_APP_ADMIN_EMAIL`.
+- Ensure the matching Supabase row has `role = 'admin'`.
 - Refresh the page after setting admin role
 
 ### Profile Icon Not Visible
@@ -155,7 +152,8 @@ The profile icon in the navbar now:
 - Ensure `getAdminUserDashboard` function has access to needed data
 
 ### Can't Create Custom Problems/Courses
-- Verify localStorage is enabled in your browser
+- Verify the `admin_content` table exists by running `SUPABASE_SETUP.sql`.
+- Check the browser console and Supabase policies for errors.
 - Check browser console for errors
 - Ensure you have adequate storage space
 

@@ -282,6 +282,68 @@ export const COURSES = [
       ]},
     ],
   },
+  {
+    id: "cloud-devops",
+    title: "Cloud & DevOps Foundations",
+    description: "Learn Linux, Git, Docker, CI/CD, cloud deployment, and the habits behind reliable software delivery.",
+    icon: "☁️",
+    thumbnail: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&q=80",
+    color: "#102a43",
+    level: "Intermediate",
+    totalLessons: 9,
+    estimatedHours: 20,
+    rating: 4.8,
+    enrolled: 15400,
+    tags: ["Linux", "Docker", "AWS", "CI/CD", "DevOps"],
+    chapters: [
+      { id:1, title:"Linux & Git", lessons:[
+        { id:"1-1", title:"Linux Command Line Essentials", duration:"24:00", videoId:"sWbUDq4S6Y8" },
+        { id:"1-2", title:"Git Branching & Collaboration", duration:"20:00", videoId:"RGOj5yH7evk" },
+        { id:"1-3", title:"Shell Scripts for Developers", duration:"18:00", videoId:"v-F3YLd6oMw" },
+      ]},
+      { id:2, title:"Containers & CI/CD", lessons:[
+        { id:"2-1", title:"Docker Images and Containers", duration:"26:00", videoId:"fqMOX6JJhGo" },
+        { id:"2-2", title:"GitHub Actions Pipeline", duration:"22:00", videoId:"R8_veQiYBjI" },
+        { id:"2-3", title:"Testing in Continuous Integration", duration:"19:00", videoId:"scEDHsr3APg" },
+      ]},
+      { id:3, title:"Cloud Deployment", lessons:[
+        { id:"3-1", title:"Cloud Concepts and Regions", duration:"21:00", videoId:"M988_fsOSWo" },
+        { id:"3-2", title:"Deploy a Web App", duration:"28:00", videoId:"K5KVEU3aaeQ" },
+        { id:"3-3", title:"Monitoring and Logs", duration:"20:00", videoId:"h4Sl21AKiDg" },
+      ]},
+    ],
+  },
+  {
+    id: "sql-data-engineering",
+    title: "SQL & Data Engineering",
+    description: "Build strong SQL fundamentals, design reliable data models, and create practical analytics pipelines.",
+    icon: "📈",
+    thumbnail: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80",
+    color: "#182b49",
+    level: "Beginner",
+    totalLessons: 9,
+    estimatedHours: 18,
+    rating: 4.7,
+    enrolled: 10900,
+    tags: ["SQL", "PostgreSQL", "Data", "ETL", "Analytics"],
+    chapters: [
+      { id:1, title:"SQL Foundations", lessons:[
+        { id:"1-1", title:"SELECT, WHERE, and ORDER BY", duration:"18:00", videoId:"qw--VYLpxG4" },
+        { id:"1-2", title:"JOINs and Relationships", duration:"24:00", videoId:"9yeOJ0ZMUYw" },
+        { id:"1-3", title:"Aggregations and GROUP BY", duration:"20:00", videoId:"4cWkVbC2bNE" },
+      ]},
+      { id:2, title:"Data Modeling", lessons:[
+        { id:"2-1", title:"Normalization and Keys", duration:"22:00", videoId:"UrYLYV7WSHM" },
+        { id:"2-2", title:"Indexes and Query Plans", duration:"25:00", videoId:"-qNSXK7s7_w" },
+        { id:"2-3", title:"Transactions and Constraints", duration:"19:00", videoId:"p7q5fJp5s8M" },
+      ]},
+      { id:3, title:"Practical Pipelines", lessons:[
+        { id:"3-1", title:"ETL Pipeline Design", duration:"23:00", videoId:"uNO0w3f6O3k" },
+        { id:"3-2", title:"Analytics with Window Functions", duration:"27:00", videoId:"H6OTMoXjNiM" },
+        { id:"3-3", title:"Build a Reporting Dataset", duration:"24:00", videoId:"7S_tz1z_5bA" },
+      ]},
+    ],
+  },
 ];
 
 // Quiz questions bank
@@ -328,23 +390,90 @@ export const QUIZ_QUESTIONS = {
     { id:"py3", question:"What is the output of `[x**2 for x in range(4)]`?", options:["[1,4,9,16]","[0,1,4,9]","[0,1,4,9,16]","[1,2,3,4]"], answer:1, explanation:"x ranges over 0,1,2,3 and x² gives 0,1,4,9.", difficulty:"Easy" },
     { id:"py4", question:"What does `*args` in a function definition mean?", options:["Single argument","Keyword arguments","Variable positional arguments","No arguments"], answer:2, explanation:"*args captures a variable number of positional arguments as a tuple.", difficulty:"Medium" },
     { id:"py5", question:"What is the GIL in Python?", options:["Global Import Lock","Global Interpreter Lock","Garbage In Loop","General Interface Layer"], answer:1, explanation:"The Global Interpreter Lock (GIL) prevents multiple Python threads from executing bytecode simultaneously.", difficulty:"Hard" },
+    { id:"py6", question:"What does `zip([1,2],[3,4])` produce when converted to a list?", options:["[(1,3),(2,4)]","[(1,2),(3,4)]","[[1,3],[2,4]]","[1,2,3,4]"], answer:0, explanation:"zip pairs values by position, producing tuples (1,3) and (2,4).", difficulty:"Medium" },
+    { id:"py7", question:"What is the output of `''.join(['a','b'])`?", options:["ab","a b","['a','b']","a+b"], answer:0, explanation:"join concatenate list strings without separators, producing 'ab'.", difficulty:"Easy" },
+    { id:"py8", question:"How do you define a set literal with values 1 and 2?", options:["{1,2}","[1,2]","(1,2)","set(1,2)"], answer:0, explanation:"Python set literals are written with curly braces, e.g. {1,2}.", difficulty:"Easy" },
+    { id:"py9", question:"What does `enumerate()` do?", options:["Counts items","Returns index and value","Filters list","Reverses list"], answer:1, explanation:"enumerate() returns pairs of (index, value) for each item in a sequence.", difficulty:"Medium" },
+    { id:"py10", question:"Which keyword creates a generator function?", options:["def","lambda","yield","async"], answer:2, explanation:"The yield keyword is used in functions to create generators that produce values lazily.", difficulty:"Hard" },
+    { id:"py11", question:"What is the difference between `==` and `is`?", options:["No difference","== checks value, is checks identity","is checks value, == checks identity","== is for numbers, is for objects"], answer:1, explanation:"== compares values while is checks if two variables refer to the same object in memory.", difficulty:"Hard" },
+    { id:"py12", question:"What does `@property` decorator do?", options:["Makes a static method","Makes a method callable as an attribute","Caches function results","Marks a private method"], answer:1, explanation:"@property allows you to access a method like an attribute without parentheses, e.g., obj.value instead of obj.value().", difficulty:"Medium" },
+  ],
+  "Web Development": [
+    { id:"web1", question:"What does CSS Specificity determine?", options:["Page load speed","Which style rules apply","Browser compatibility","File size"], answer:1, explanation:"CSS specificity determines which style rules are applied when multiple rules target the same element.", difficulty:"Easy" },
+    { id:"web2", question:"What is the purpose of the box model in CSS?", options:["Animations","Layout structure for elements","Color management","Typography"], answer:1, explanation:"The box model (margin, border, padding, content) defines how elements are spaced and sized on a page.", difficulty:"Easy" },
+    { id:"web3", question:"What is the difference between `let` and `var` in JavaScript?", options:["No difference","let has block scope, var has function scope","var has block scope, let has function scope","var is deprecated"], answer:1, explanation:"let has block scope (limited to { }), while var has function scope and can be re-declared.", difficulty:"Medium" },
+    { id:"web4", question:"What is event delegation in JavaScript?", options:["Canceling events","Handling events on parent elements instead of individual child elements","Creating custom events","Preventing default behavior"], answer:1, explanation:"Event delegation leverages event bubbling to handle events on parent elements, reducing listener count and improving performance.", difficulty:"Hard" },
+    { id:"web5", question:"What does `this` refer to in an arrow function?", options:["The object calling the function","The parent scope's `this`","Always undefined","The function itself"], answer:1, explanation:"Arrow functions inherit `this` from their enclosing scope, unlike regular functions which get `this` from the caller.", difficulty:"Medium" },
+    { id:"web6", question:"What is the Virtual DOM in React?", options:["A real DOM element","A JavaScript representation of the real DOM for optimization","A browser feature","A styling tool"], answer:1, explanation:"The Virtual DOM is an abstraction layer that React uses to efficiently update the real DOM by comparing changes.", difficulty:"Medium" },
+    { id:"web7", question:"What is middleware in Express.js?", options:["A database layer","Functions that handle requests/responses in a pipeline","A template engine","A type of variable"], answer:1, explanation:"Middleware functions in Express process requests and responses in sequence, allowing you to add functionality like logging, authentication, etc.", difficulty:"Medium" },
+    { id:"web8", question:"How does CORS work?", options:["Encrypts data","Prevents cross-origin requests by default and allows them via headers","Speeds up requests","Caches responses"], answer:1, explanation:"CORS (Cross-Origin Resource Sharing) is a security feature that restricts cross-origin requests by default but allows them if the server sends appropriate headers.", difficulty:"Hard" },
+    { id:"web9", question:"What is JWT (JSON Web Token)?", options:["A database query language","A stateless authentication token containing encoded data","A JavaScript framework","A CSS preprocessing language"], answer:1, explanation:"JWT is a compact, self-contained token that securely transmits information between parties and is commonly used for stateless authentication.", difficulty:"Hard" },
+    { id:"web10", question:"What are React Hooks?", options:["Debugging tools","Functions that let you use state and lifecycle features in functional components","CSS frameworks","Browser extensions"], answer:1, explanation:"Hooks (like useState, useEffect) allow functional components to have state management and side effects, eliminating the need for class components.", difficulty:"Medium" },
+  ],
+  "System Design": [
+    { id:"sys1", question:"What is horizontal scaling?", options:["Increasing server speed","Adding more servers to distribute load","Increasing server memory","Optimizing code"], answer:1, explanation:"Horizontal scaling means adding more machines/servers to handle increased load, as opposed to vertical scaling which adds resources to a single machine.", difficulty:"Easy" },
+    { id:"sys2", question:"What is the CAP Theorem?", options:["A programming language","States a system can't have Consistency, Availability, and Partition tolerance simultaneously","A database optimization technique","A security protocol"], answer:1, explanation:"CAP Theorem states that distributed systems can guarantee at most 2 of 3: Consistency (all nodes see same data), Availability (system always responds), Partition tolerance (works despite network failures).", difficulty:"Hard" },
+    { id:"sys3", question:"What is caching?", options:["Storing data permanently","Temporarily storing frequently accessed data for faster retrieval","Compressing files","Encrypting data"], answer:1, explanation:"Caching stores frequently accessed data in fast-access storage (memory) to reduce latency and improve performance.", difficulty:"Easy" },
+    { id:"sys4", question:"What is a load balancer?", options:["Balances CSS rules","Distributes incoming requests across multiple servers","Balances database records","Optimizes memory usage"], answer:1, explanation:"A load balancer distributes incoming traffic across multiple servers to prevent any single server from becoming a bottleneck.", difficulty:"Easy" },
+    { id:"sys5", question:"What is database replication?", options:["Copying database code","Creating copies of data on multiple servers for redundancy and availability","Duplicating queries","Backing up data"], answer:1, explanation:"Database replication maintains copies of data across multiple servers, ensuring data availability and enabling failover in case of server failure.", difficulty:"Medium" },
+    { id:"sys6", question:"What is database sharding?", options:["Deleting data","Horizontally partitioning data across multiple databases based on a key","Compressing the database","Creating backups"], answer:1, explanation:"Sharding partitions large datasets horizontally across multiple database instances (shards), each handling a subset of data, to improve scalability and performance.", difficulty:"Hard" },
+    { id:"sys7", question:"What is eventual consistency?", options:["Data is always consistent","Data will eventually become consistent across all nodes after updates","Data is never consistent","Consistency is optional"], answer:1, explanation:"Eventual consistency means that in a distributed system, all nodes will eventually converge to the same state, though there may be temporary inconsistencies.", difficulty:"Hard" },
+    { id:"sys8", question:"What is message queuing?", options:["Ordering messages alphabetically","Using a queue to manage asynchronous task processing","A sorting algorithm","A caching technique"], answer:1, explanation:"Message queues (like RabbitMQ, Kafka) enable asynchronous communication between services by storing messages temporarily, decoupling producers and consumers.", difficulty:"Medium" },
+  ],
+  "JavaScript Advanced": [
+    { id:"jsadv1", question:"What is event bubbling?", options:["Events rise from child to parent elements","Events sink from parent to child","Events don't propagate","Events are canceled"], answer:0, explanation:"Event bubbling causes an event to propagate up from the target element through its ancestors in the DOM tree.", difficulty:"Medium" },
+    { id:"jsadv2", question:"What is prototype inheritance?", options:["A design pattern","Objects inherit properties from other objects via the prototype chain","Class-based inheritance only","A deprecated feature"], answer:1, explanation:"Prototypal inheritance allows objects to inherit directly from other objects through the prototype chain, enabling code reuse and property lookup delegation.", difficulty:"Hard" },
+    { id:"jsadv3", question:"What does `Object.create()` do?", options:["Creates a copy of an object","Creates a new object with specified prototype","Creates an empty object","Merges objects"], answer:1, explanation:"Object.create(proto) creates a new object with the specified object as its prototype, enabling explicit prototype-based inheritance.", difficulty:"Medium" },
+    { id:"jsadv4", question:"What is the difference between `map()` and `forEach()`?", options:["No difference","map returns a new array, forEach doesn't return anything","forEach returns an array, map doesn't","They're used differently"],answer:1, explanation:"map() returns a new array with transformed elements, while forEach() iterates without returning a value and is used for side effects.", difficulty:"Easy" },
+    { id:"jsadv5", question:"What is currying in JavaScript?", options:["A food","Transforming a function to accept arguments one at a time","A loop technique","Error handling"], answer:1, explanation:"Currying transforms a function that takes multiple arguments into a series of functions that each take one argument, useful for partial application.", difficulty:"Hard" },
+    { id:"jsadv6", question:"What does `apply()` do?", options:["Applies styles","Calls a function with a specific `this` value and arguments as an array","Applies a filter","Applies animations"], answer:1, explanation:"apply() calls a function with a specified `this` context and passes arguments as an array, similar to call() but taking arguments differently.", difficulty:"Medium" },
+    { id:"jsadv7", question:"What are Symbols?", options:["Mathematical operators","Unique immutable data types used for object property keys","Syntax markers","Deprecated features"], answer:1, explanation:"Symbols are unique, immutable values often used as object property keys to ensure no naming conflicts, providing property privacy.", difficulty:"Hard" },
+    { id:"jsadv8", question:"What is destructuring?", options:["Breaking down code","Extracting values from arrays or object properties into variables","Deleting variables","Refactoring code"], answer:1, explanation:"Destructuring is a convenient way to extract values from arrays or objects into separate variables, reducing code verbosity.", difficulty:"Easy" },
   ],
 };
+
+const EXTRA_QUIZ_QUESTIONS = {
+  "Data Structures": [
+    { id:"ds11", question:"Which structure is best for checking balanced parentheses?", options:["Stack","Queue","Heap","Graph"], answer:0, explanation:"A stack matches the most recently opened bracket first, which is exactly the required LIFO behavior.", difficulty:"Easy" },
+    { id:"ds12", question:"What is the average lookup complexity of a well-balanced binary search tree?", options:["O(n²)","O(log n)","O(1)","O(n log n)"], answer:1, explanation:"A balanced tree has logarithmic height, so search visits O(log n) nodes.", difficulty:"Medium" },
+  ],
+  "Algorithms": [
+    { id:"alg9", question:"Which technique solves the activity-selection problem efficiently?", options:["Greedy choice","Brute force only","Hashing only","Backtracking only"], answer:0, explanation:"Selecting the activity with the earliest finishing time leaves the most room for future activities.", difficulty:"Medium" },
+    { id:"alg10", question:"What does BFS find in an unweighted graph?", options:["A minimum spanning tree only","Shortest paths by edge count","Negative cycles","A topological order always"], answer:1, explanation:"BFS explores by distance layers, giving shortest paths measured in number of edges.", difficulty:"Medium" },
+  ],
+  "Dynamic Programming": [
+    { id:"dp6", question:"What is the usual time complexity of the 0/1 Knapsack DP?", options:["O(nW)","O(n+W)","O(2^n) always","O(W log n)"], answer:0, explanation:"The table has one dimension for items and one for capacity, giving O(nW).", difficulty:"Medium" },
+    { id:"dp7", question:"Which property lets DP reuse a previously computed result?", options:["Randomization","Overlapping subproblems","A sorted input","Constant memory"], answer:1, explanation:"Overlapping subproblems mean the same smaller problems recur and can be cached.", difficulty:"Easy" },
+  ],
+  "Graphs": [
+    { id:"g6", question:"Which algorithm is commonly used for a minimum spanning tree?", options:["Prim's","KMP","Binary Search","Floyd-Warshall only"], answer:0, explanation:"Prim's grows a minimum spanning tree by repeatedly adding the cheapest crossing edge.", difficulty:"Medium" },
+    { id:"g7", question:"What is the purpose of a visited set in graph traversal?", options:["Sort vertices","Avoid revisiting vertices","Increase edge weights","Create cycles"], answer:1, explanation:"Tracking visited vertices prevents repeated work and infinite traversal through cycles.", difficulty:"Easy" },
+  ],
+  "Python": [
+    { id:"py13", question:"Which keyword handles an exception in Python?", options:["catch","except","rescue","handle"], answer:1, explanation:"Python uses try and except blocks to catch and handle exceptions.", difficulty:"Easy" },
+    { id:"py14", question:"What does a Python dictionary comprehension create?", options:["A dictionary expression","A generator only","A class","A module"], answer:0, explanation:"Dictionary comprehensions build dictionaries from an iterable using key-value expressions.", difficulty:"Medium" },
+  ],
+  "Web Development": [
+    { id:"web11", question:"Which HTTP method is commonly used to create a resource?", options:["GET","POST","DELETE","HEAD"], answer:1, explanation:"POST commonly sends data to create a new resource on the server.", difficulty:"Easy" },
+    { id:"web12", question:"What does responsive design adapt to?", options:["Only desktop screens","Different screen sizes and devices","Database schemas","Server memory"], answer:1, explanation:"Responsive layouts adapt their structure and styles to different viewport sizes.", difficulty:"Easy" },
+  ],
+  "System Design": [
+    { id:"sys9", question:"What is a CDN primarily used for?", options:["Serving content closer to users","Writing database schemas","Compiling Java code","Replacing authentication"], answer:0, explanation:"A CDN caches and serves content from geographically distributed edge locations.", difficulty:"Easy" },
+    { id:"sys10", question:"Why use a database index?", options:["To speed up selected queries","To encrypt every row","To remove all storage","To disable backups"], answer:0, explanation:"Indexes provide data structures that help the database locate matching rows faster.", difficulty:"Medium" },
+  ],
+  "JavaScript Advanced": [
+    { id:"jsadv9", question:"What does a Promise represent?", options:["A future asynchronous result","A CSS rule","A loop counter","A DOM node"], answer:0, explanation:"A Promise represents the eventual completion or failure of an asynchronous operation.", difficulty:"Easy" },
+    { id:"jsadv10", question:"What does strict equality (===) compare?", options:["Only string length","Value and type without coercion","Only object identity","Nothing"], answer:1, explanation:"=== compares both type and value without converting operands.", difficulty:"Easy" },
+  ],
+};
+
+Object.entries(EXTRA_QUIZ_QUESTIONS).forEach(([topic, extra]) => {
+  QUIZ_QUESTIONS[topic] = [...QUIZ_QUESTIONS[topic], ...extra];
+});
 
 export const QUIZ_TOPICS = Object.keys(QUIZ_QUESTIONS);
 
 // Forum posts seed
-export const FORUM_POSTS_SEED = [
-  { title:"Why does my DFS not handle cycles?",             tags:["Graph","DFS"],          votes:42, answers:8,  views:234,  time:"2h ago",  solved:false },
-  { title:"Best approach for Longest Increasing Subsequence?",tags:["DP"],                votes:38, answers:12, views:891,  time:"5h ago",  solved:true  },
-  { title:"How to master system design interviews?",        tags:["System Design"],        votes:127,answers:34, views:3421, time:"1d ago",  solved:false },
-  { title:"Two Sum — why does hash map work here?",         tags:["Array","Hash Table"],   votes:56, answers:19, views:1204, time:"2d ago",  solved:true  },
-  { title:"When to use BFS vs DFS?",                        tags:["Graph","BFS","DFS"],    votes:73, answers:22, views:2780, time:"3d ago",  solved:true  },
-  { title:"Study plan for 3 months to crack FAANG?",        tags:["Study Plan"],           votes:89, answers:27, views:5620, time:"4d ago",  solved:false },
-  { title:"Difference between Greedy and DP?",             tags:["DP","Greedy"],           votes:61, answers:15, views:1890, time:"5d ago",  solved:true  },
-  { title:"How to handle Java concurrency in interviews?",  tags:["Java","Concurrency"],   votes:44, answers:11, views:980,  time:"1w ago",  solved:false },
-];
-
 // DSA Roadmap
 export const ROADMAP_NODES = [
   { id:"arrays",    title:"Arrays & Hashing",       prerequisites:[],             problemIds:[1,2,3,4,5],  status:"done",   icon:"✅" },
@@ -401,6 +530,6 @@ export const BADGES = [
   { id:"solver_100",    icon:"💯", title:"Century",         desc:"Solve 100 problems",                xp:500  },
   { id:"quiz_perfect",  icon:"🎓", title:"Scholar",         desc:"Score 100% on any quiz",            xp:150  },
   { id:"night_owl",     icon:"🌙", title:"Night Owl",       desc:"Submit solution between 12am-4am",  xp:75   },
-  { id:"helper",        icon:"🤝", title:"Helper",          desc:"Get 50 upvotes on forum answers",   xp:200  },
+  { id:"helper",        icon:"🤝", title:"Helper",          desc:"Help the learning community with quality answers",   xp:200  },
   { id:"top_100",       icon:"👑", title:"Elite",           desc:"Reach Top 100 on leaderboard",      xp:1000 },
 ];

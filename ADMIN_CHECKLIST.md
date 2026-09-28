@@ -20,11 +20,11 @@
 - **Result:** ✓ Clear admin setup process with step-by-step instructions
 
 ### 3. Admin Credentials ✅
-**Status:** PROVIDED
-- **Email:** `admin@codebro.io`
-- **Password:** `Admin123!@#`
-- **Location:** Display in Admin Dashboard → Overview tab
-- **Result:** ✓ Credentials ready to use
+**Status:** CONFIGURE IN FIREBASE
+- **Email:** value of `REACT_APP_ADMIN_EMAIL` (default: `admin1@codebro.dev`)
+- **Password:** create a private Firebase password
+- **Location:** Firebase Authentication → Users
+- **Result:** Create the account, then set its Supabase role to `admin`
 
 ---
 
@@ -63,8 +63,8 @@
 
 ### For Admins - Dashboard Access
 1. **Login with:**
-   - Email: `admin@codebro.io`
-   - Password: `Admin123!@#`
+   - Email: the value of `REACT_APP_ADMIN_EMAIL`
+   - Password: your private Firebase password
 2. **Access:** Click Profile Icon → ⚙️ Admin Panel
 3. **Features:**
    - Overview: Statistics & credentials
@@ -84,8 +84,8 @@
 1. Go to Firebase Console
 2. Select your project
 3. Authentication → Users → Create User
-4. Email: admin@codebro.io
-5. Password: Admin123!@#
+4. Email: value of REACT_APP_ADMIN_EMAIL
+5. Password: your private Firebase password
 6. Create
 ```
 
@@ -94,12 +94,12 @@
 1. Go to Supabase Dashboard
 2. Select your project
 3. SQL Editor
-4. Run: UPDATE users SET role = 'admin' WHERE email = 'admin@codebro.io';
+4. Run: UPDATE users SET role = 'admin' WHERE email = 'admin1@codebro.dev';
 ```
 
 **Step 3: Login (2 min)**
 ```
-1. Log in with: admin@codebro.io / Admin123!@#
+1. Log in with the Firebase admin credentials
 2. Verify admin panel appears
 3. Change password in Settings
 ```
@@ -140,9 +140,9 @@
 ┌─────────────────────────────────────┐
 │  🔐 Admin Credentials               │
 ├─────────────────────────────────────┤
-│  Email: admin@codebro.io           │
-│  Password: Admin123!@#              │
-│  (Displayed with setup instructions)│
+│  Email: REACT_APP_ADMIN_EMAIL       │
+│  Password: never displayed           │
+│  (Use a private Firebase password)   │
 └─────────────────────────────────────┘
 ```
 
@@ -168,7 +168,7 @@ After implementing fixes, verify:
 - [ ] Profile dropdown menu appears
 - [ ] Admin can access admin panel
 - [ ] Admin setup modal displays on first admin login
-- [ ] Admin credentials are visible in overview tab
+- [ ] Admin setup instructions are visible in the overview tab
 - [ ] User search and filtering works
 - [ ] User progress details display correctly
 - [ ] Can add/edit/delete problems
@@ -192,7 +192,7 @@ After implementing fixes, verify:
 |------|--------|-------|
 | Profile icon fix | ✅ Done | Visible for all users |
 | Admin dashboard | ✅ Done | Full user management |
-| Admin credentials | ✅ Provided | admin@codebro.io / Admin123!@# |
+| Admin credentials | ✅ Configure | Firebase + `REACT_APP_ADMIN_EMAIL` |
 | Documentation | ✅ Created | 3 guide files |
 | Testing | ✅ Ready | Ready for deployment |
 
